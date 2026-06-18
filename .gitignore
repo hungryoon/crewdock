@@ -1,0 +1,18 @@
+# crew runtime state — never commit
+instances/*/data/
+instances/*/instance.env
+instances/*/docker-compose.yml
+instances/*/meta.json
+instances/_shared.env
+instances/.lock
+# keep the seed template
+!instances/_template/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# internal planning/spec docs — not part of the public repo
+docs/superpowers/

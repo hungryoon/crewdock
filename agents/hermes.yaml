@@ -1,0 +1,36 @@
+# Hermes runtime — official NousResearch image.
+type: hermes
+image: nousresearch/hermes-agent:latest
+run_command: ["gateway", "run"]
+data_mount: /opt/data
+layers_mount: /opt/shared
+network_mode: host
+dashboard:
+  container_port: 9119
+  host: 127.0.0.1
+  path: /
+  port_env: HERMES_DASHBOARD_PORT
+setup:
+  command: ["setup"]
+  interactive: true
+env:
+  HERMES_DASHBOARD: "1"
+  HERMES_DASHBOARD_HOST: "127.0.0.1"
+passthrough_env:
+  - HERMES_UID
+  - HERMES_GID
+  - TELEGRAM_BOT_TOKEN
+credentials:
+  llm:
+    inherit_from_shared: true
+  bot_token:
+    required: true
+    env: TELEGRAM_BOT_TOKEN
+resources:
+  mem_limit: 4g
+  cpus: 2
+  shm_size: 1g
+seed_config: _template/config.yaml
+migration:
+  min_data_version: null
+  hook: null

@@ -1,0 +1,31 @@
+services:
+  agent:
+    image: {{ image }}
+    container_name: {{ container_name }}
+    restart: unless-stopped
+{%- if network_mode == "host" %}
+    network_mode: host
+{%- endif %}
+    volumes:
+      - ./data:{{ data_mount }}
+{%- for layer in layers %}
+      - ../../layers/{{ layer }}:{{ layers_mount }}/{{ layer }}:ro
+{%- endfor %}
+{%- if network_mode != "host" %}
+    ports:
+      - "{{ dashboard_host }}:${CREW_PORT}:{{ dashboard_port }}"
+{%- endif %}
+    environment:
+{%- for key, value in static_env.items() %}
+      - {{ key }}={{ value }}
+{%- endfor %}
+{%- if dashboard_port_env %}
+      - {{ dashboard_port_env }}={{ dashboard_port_value }}
+{%- endif %}
+{%- for key in passthrough_env %}
+      - {{ key }}=${{ '{' }}{{ key }}{{ '}' }}
+{%- endfor %}
+    shm_size: "{{ shm_size }}"
+    mem_limit: {{ mem_limit }}
+    cpus: {{ cpus }}
+    command: {{ run_command_json }}
