@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -5,7 +6,12 @@ from pathlib import Path
 
 from .compose import render_compose
 from .docker import run_compose, compose_argv
-from .errors import InstanceExistsError, InstanceNotFoundError, LayerNotFoundError
+from .errors import (
+    CrewError,
+    InstanceExistsError,
+    InstanceNotFoundError,
+    LayerNotFoundError,
+)
 from .manifest import load_manifest
 from .models import Instance
 from .ports import find_free_port
@@ -34,8 +40,19 @@ def _env_files(root: Path, name: str) -> list[Path]:
     return files
 
 
-def _write_instance_env(root: Path, name: str, port: int, creds: dict) -> None:
-    lines = [f"CREW_PORT={port}"]
+def _write_instance_env(root: Path, name: str, port: int, creds: dict,
+                        host_user_env: dict | None = None) -> None:
+    uid, gid = os.getuid(), os.getgid()
+    # CREW_UID/CREW_GID are the canonical host identity. Agent images that start
+    # as root and drop privileges read them under their own env names (mapped via
+    # the manifest's host_user_env), so the bind-mounted data/ stays host-owned
+    # and `rm --purge` never hits root-owned residue.
+    lines = [f"CREW_PORT={port}", f"CREW_UID={uid}", f"CREW_GID={gid}"]
+    if host_user_env:
+        if host_user_env.get("uid"):
+            lines.append(f"{host_user_env['uid']}={uid}")
+        if host_user_env.get("gid"):
+            lines.append(f"{host_user_env['gid']}={gid}")
     for key, value in creds.items():
         lines.append(f"{key}={value}")
     paths.instance_env_path(root, name).write_text("\n".join(lines) + "\n")
@@ -66,7 +83,8 @@ def create(root: Path, name: str, type: str, creds: dict,
                 tmpl = root / "instances" / "_template" / "config.yaml"
                 if tmpl.exists():
                     shutil.copy(tmpl, inst_dir / "data" / "config.yaml")
-            _write_instance_env(root, name, port, creds)
+            _write_instance_env(root, name, port, creds,
+                                host_user_env=manifest.host_user_env)
             paths.compose_path(root, name).write_text(
                 render_compose(manifest, name, port, layers=layers)
             )
@@ -102,7 +120,52 @@ def remove(root: Path, name: str, purge: bool = False) -> None:
         ["down"],
     )
     if purge:
-        shutil.rmtree(paths.instance_dir(root, name), ignore_errors=True)
+        _purge_dir(paths.instance_dir(root, name))
+
+
+def _on_rm_error(func, path, exc):
+    """rmtree (onexc) handler: agents create dirs without the write bit, which
+    blocks unlinking their contents even for the owner. Restore write/exec on
+    the entry and its parent, then retry — re-raises if genuinely un-permitted
+    (e.g. a root-owned file), which routes _purge_dir to the container fallback."""
+    for target in (os.path.dirname(path), path):
+        try:
+            os.chmod(target, 0o700)
+        except OSError:
+            pass
+    func(path)
+
+
+def _try_rmtree(path: Path) -> bool:
+    """Remove `path`, repairing unwritable dirs as it goes. Returns True if the
+    tree is gone, False if residue the host can't touch remains."""
+    try:
+        shutil.rmtree(path, onexc=_on_rm_error)
+    except OSError:
+        pass
+    return not path.exists()
+
+
+def _root_delete_contents(path: Path) -> None:
+    """Last resort for genuinely root-owned residue: clear it from inside a
+    throwaway root container mounted on the (absolute) instance dir."""
+    subprocess.run(
+        ["docker", "run", "--rm", "-v", f"{path.resolve()}:/target", "alpine:3",
+         "sh", "-c", "rm -rf /target/* /target/.[!.]* /target/..?* 2>/dev/null || true"],
+        check=False,
+    )
+
+
+def _purge_dir(path: Path) -> None:
+    if _try_rmtree(path):
+        return
+    # Host couldn't finish (root-owned residue) — clear it as root, then retry.
+    _root_delete_contents(path)
+    if not _try_rmtree(path):
+        raise CrewError(
+            f"could not fully purge {path}\n"
+            f"remove the leftovers manually with: sudo rm -rf {path}"
+        )
 
 
 def _compose_state(root: Path, name: str) -> str:

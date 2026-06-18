@@ -31,6 +31,7 @@ class Manifest:
     cpus: float
     shm_size: str
     seed_config: str | None
+    host_user_env: dict[str, str] | None
     raw: dict = field(repr=False)
 
 
@@ -73,5 +74,6 @@ def load_manifest(path: Path) -> Manifest:
         cpus=res.get("cpus", 2),
         shm_size=res.get("shm_size", "1g"),
         seed_config=data.get("seed_config"),
+        host_user_env=data.get("host_user_env"),
         raw=data,
     )

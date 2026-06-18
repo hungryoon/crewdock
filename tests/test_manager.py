@@ -118,6 +118,72 @@ def test_remove_purge_deletes_data(root, calls):
     assert not paths.instance_dir(root, "alice").exists()
 
 
+def test_create_injects_host_uid_gid_env(root, calls):
+    """Prevention: write the host uid/gid into instance.env so the agent
+    container (which starts as root) drops privileges to the host user and
+    never leaves root-owned files in the bind-mounted data/."""
+    import os
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    env = paths.instance_env_path(root, "alice").read_text()
+    assert f"CREW_UID={os.getuid()}" in env
+    assert f"CREW_GID={os.getgid()}" in env
+    # manifest's host_user_env maps the canonical ids onto image-specific names
+    assert f"HERMES_UID={os.getuid()}" in env
+    assert f"HERMES_GID={os.getgid()}" in env
+
+
+def test_remove_purge_repairs_unwritable_dirs_on_host(root, calls, monkeypatch):
+    """Recovery (common case): agents create dirs without the write bit, which
+    blocks plain rmtree. Purge must chmod-repair and finish on the host alone —
+    no root container needed."""
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    inst = paths.instance_dir(root, "alice")
+    locked = inst / "data" / "skills" / "media"
+    locked.mkdir(parents=True)
+    (locked / "f").write_text("x")
+    locked.chmod(0o500)  # owner loses write -> rmtree can't unlink f
+
+    container_called = []
+    monkeypatch.setattr(manager, "_root_delete_contents",
+                        lambda p: container_called.append(p))
+
+    manager.remove(root, "alice", purge=True)
+    assert not inst.exists()
+    assert container_called == []  # host repaired it without the container
+
+
+def test_remove_purge_falls_back_to_root_container(root, calls, monkeypatch):
+    """Recovery (root-owned residue): when the host genuinely can't delete the
+    files, purge falls back to a root container instead of silently succeeding."""
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    inst = paths.instance_dir(root, "alice")
+
+    # Host removal fails on the first pass; the container clears it; pass two wins.
+    outcomes = iter([False, True])
+    monkeypatch.setattr(manager, "_try_rmtree", lambda p: next(outcomes))
+    container_called = []
+    monkeypatch.setattr(manager, "_root_delete_contents",
+                        lambda p: container_called.append(p))
+
+    manager.remove(root, "alice", purge=True)
+    assert container_called == [inst]
+
+
+def test_remove_purge_raises_when_residue_survives(root, calls, monkeypatch):
+    """Never silently succeed: if residue survives even the container fallback,
+    purge surfaces a CrewError with a manual-cleanup hint."""
+    from crew.core.errors import CrewError
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    monkeypatch.setattr(manager, "_try_rmtree", lambda p: False)
+    monkeypatch.setattr(manager, "_root_delete_contents", lambda p: None)
+    with pytest.raises(CrewError, match="sudo rm -rf"):
+        manager.remove(root, "alice", purge=True)
+
+
 def test_remove_missing_raises(root, calls):
     _agents_dir(root)
     from crew.core.errors import InstanceNotFoundError

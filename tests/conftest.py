@@ -31,6 +31,9 @@ passthrough_env:
   - HERMES_UID
   - HERMES_GID
   - TELEGRAM_BOT_TOKEN
+host_user_env:
+  uid: HERMES_UID
+  gid: HERMES_GID
 credentials:
   llm:
     inherit_from_shared: true

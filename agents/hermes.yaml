@@ -20,6 +20,12 @@ passthrough_env:
   - HERMES_UID
   - HERMES_GID
   - TELEGRAM_BOT_TOKEN
+# crewdock fills these with the host uid/gid at create time so the container
+# (which starts as root) drops privileges to the host user — keeps the
+# bind-mounted data/ host-owned so `crew rm --purge` never hits root residue.
+host_user_env:
+  uid: HERMES_UID
+  gid: HERMES_GID
 credentials:
   llm:
     inherit_from_shared: true
