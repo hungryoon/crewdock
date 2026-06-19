@@ -73,3 +73,15 @@ def test_serve_argv_on_and_off():
         "tailscale", "serve", "--bg", "--https=9120", "http://127.0.0.1:9300"]
     assert expose.serve_off_argv(9120) == [
         "tailscale", "serve", "--https=9120", "off"]
+
+
+def test_tailnet_dns_name_strips_trailing_dot():
+    payload = '{"BackendState":"Running","Self":{"DNSName":"box.tail1234.ts.net."}}'
+    assert expose.tailnet_dns_name(run_capture=lambda argv: payload) \
+        == "box.tail1234.ts.net"
+
+
+def test_redirect_and_dashboard_url():
+    assert expose.redirect_url("box.ts.net", 9120) \
+        == "https://box.ts.net:9120/oauth2/callback"
+    assert expose.dashboard_url("box.ts.net", 9120) == "https://box.ts.net:9120/"

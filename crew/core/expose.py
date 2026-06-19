@@ -91,3 +91,27 @@ def serve_argv(https_port: int, authport: int) -> list[str]:
 
 def serve_off_argv(https_port: int) -> list[str]:
     return ["tailscale", "serve", f"--https={https_port}", "off"]
+
+
+def _run_capture(argv: list[str]) -> str:
+    try:
+        return subprocess.run(argv, check=True, text=True,
+                              capture_output=True).stdout
+    except FileNotFoundError as exc:
+        raise ExposeError(f"{argv[0]} not found — is it installed?") from exc
+    except subprocess.CalledProcessError as exc:
+        raise ExposeError(
+            f"{' '.join(argv)} failed (exit {exc.returncode})") from exc
+
+
+def tailnet_dns_name(run_capture=_run_capture) -> str:
+    data = json.loads(run_capture(["tailscale", "status", "--json"]))
+    return data["Self"]["DNSName"].rstrip(".")
+
+
+def redirect_url(host: str, https_port: int) -> str:
+    return f"https://{host}:{https_port}/oauth2/callback"
+
+
+def dashboard_url(host: str, https_port: int) -> str:
+    return f"https://{host}:{https_port}/"
