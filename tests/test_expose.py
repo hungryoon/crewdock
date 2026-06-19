@@ -85,3 +85,14 @@ def test_redirect_and_dashboard_url():
     assert expose.redirect_url("box.ts.net", 9120) \
         == "https://box.ts.net:9120/oauth2/callback"
     assert expose.dashboard_url("box.ts.net", 9120) == "https://box.ts.net:9120/"
+
+
+def test_check_tailscale_up_passes_when_running():
+    expose.check_tailscale_up(
+        run_capture=lambda argv: '{"BackendState":"Running"}')  # no raise
+
+
+def test_check_tailscale_up_raises_when_not_running():
+    with pytest.raises(ExposeError, match="tailscale"):
+        expose.check_tailscale_up(
+            run_capture=lambda argv: '{"BackendState":"NoState"}')

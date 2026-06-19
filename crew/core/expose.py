@@ -115,3 +115,12 @@ def redirect_url(host: str, https_port: int) -> str:
 
 def dashboard_url(host: str, https_port: int) -> str:
     return f"https://{host}:{https_port}/"
+
+
+def check_tailscale_up(run_capture=_run_capture) -> None:
+    data = json.loads(run_capture(["tailscale", "status", "--json"]))
+    if data.get("BackendState") != "Running":
+        raise ExposeError(
+            "tailscale is not connected — run `tailscale up` first "
+            "(and enable HTTPS for your tailnet)."
+        )
