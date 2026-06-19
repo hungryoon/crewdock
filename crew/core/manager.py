@@ -16,6 +16,7 @@ from .manifest import load_manifest
 from .models import Instance
 from .ports import find_free_port
 from . import paths
+from . import expose as _expose
 
 
 def _manifest_path(root: Path, type: str) -> Path:
@@ -113,6 +114,8 @@ def _require_exists(root: Path, name: str) -> None:
 
 def remove(root: Path, name: str, purge: bool = False) -> None:
     _require_exists(root, name)
+    if _expose.is_exposed(name):
+        _expose.unexpose(root, name)
     run_compose(
         paths.project_name(name),
         paths.compose_path(root, name),

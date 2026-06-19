@@ -190,3 +190,13 @@ def test_unexpose_turns_off_serve_removes_container_and_dir(tmp_path, monkeypatc
     assert ["tailscale", "serve", "--https=9120", "off"] in cmds
     assert ["docker", "rm", "-f", "crew-alice-auth"] in cmds
     assert not edir.exists()
+
+
+def test_is_exposed_true_when_container_present(monkeypatch):
+    monkeypatch.setattr(expose, "_run_capture", lambda argv: "abc123\n")
+    assert expose.is_exposed("alice") is True
+
+
+def test_is_exposed_false_when_no_container(monkeypatch):
+    monkeypatch.setattr(expose, "_run_capture", lambda argv: "")
+    assert expose.is_exposed("alice") is False

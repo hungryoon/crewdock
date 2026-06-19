@@ -186,3 +186,13 @@ def unexpose(root: Path, name: str) -> None:
     edir = paths.expose_dir(root, name)
     if edir.exists():
         shutil.rmtree(edir, ignore_errors=True)
+
+
+def is_exposed(name: str, run_capture=None) -> bool:
+    # None sentinel (not a =_run_capture default) so it resolves at call time —
+    # lets tests `monkeypatch.setattr(expose, "_run_capture", ...)` take effect.
+    if run_capture is None:
+        run_capture = _run_capture
+    out = run_capture(
+        ["docker", "ps", "-q", "-f", f"name=^{auth_container_name(name)}$"])
+    return bool(out.strip())

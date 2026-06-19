@@ -292,3 +292,25 @@ def test_shell_argv_uses_exec(root, calls):
     assert argv[:2] == ["docker", "compose"]
     assert "exec" in argv
     assert "agent" in argv
+
+
+def test_remove_unexposes_if_exposed(root, calls, monkeypatch):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    import crew.core.expose as expose
+    monkeypatch.setattr(expose, "is_exposed", lambda name: True)
+    unexposed = []
+    monkeypatch.setattr(expose, "unexpose", lambda r, n: unexposed.append(n))
+    manager.remove(root, "alice")
+    assert unexposed == ["alice"]
+
+
+def test_remove_skips_unexpose_when_not_exposed(root, calls, monkeypatch):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    import crew.core.expose as expose
+    monkeypatch.setattr(expose, "is_exposed", lambda name: False)
+    unexposed = []
+    monkeypatch.setattr(expose, "unexpose", lambda r, n: unexposed.append(n))
+    manager.remove(root, "alice")
+    assert unexposed == []
