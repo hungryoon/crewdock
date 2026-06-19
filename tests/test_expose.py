@@ -175,3 +175,18 @@ def test_expose_rolls_back_container_when_serve_fails(tmp_path, monkeypatch):
     with pytest.raises(CrewError):
         expose.expose(tmp_path, "alice")
     assert any(q[:3] == ["docker", "rm", "-f"] for q in quiet)
+
+
+def test_unexpose_turns_off_serve_removes_container_and_dir(tmp_path, monkeypatch):
+    _setup_instance(tmp_path)
+    edir = tmp_path / "instances" / "alice" / "expose"
+    edir.mkdir(parents=True)
+    (edir / "emails.txt").write_text("a@x.com\n")
+    cmds = []
+    monkeypatch.setattr(expose, "_run_quiet", lambda argv: cmds.append(argv))
+
+    expose.unexpose(tmp_path, "alice")
+
+    assert ["tailscale", "serve", "--https=9120", "off"] in cmds
+    assert ["docker", "rm", "-f", "crew-alice-auth"] in cmds
+    assert not edir.exists()

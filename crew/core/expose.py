@@ -176,3 +176,13 @@ def expose(root: Path, name: str) -> dict:
         "redirect_uri": redirect,
         "https_port": https_port,
     }
+
+
+def unexpose(root: Path, name: str) -> None:
+    dashport = paths.read_port(root, name)
+    if dashport:
+        _run_quiet(serve_off_argv(dashport))
+    _run_quiet(["docker", "rm", "-f", auth_container_name(name)])
+    edir = paths.expose_dir(root, name)
+    if edir.exists():
+        shutil.rmtree(edir, ignore_errors=True)
