@@ -24,3 +24,7 @@ class NoFreePortError(CrewError):
 
 class LayerNotFoundError(CrewError):
     """A requested data layer does not exist in the layer pool."""
+
+
+class ExposeError(CrewError):
+    """Exposing an instance's dashboard (Tailscale / oauth2-proxy) failed."""
