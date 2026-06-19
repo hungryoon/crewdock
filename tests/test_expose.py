@@ -38,6 +38,35 @@ def test_load_expose_config_allows_missing_emails(tmp_path):
     assert cfg.allowed_emails == []
 
 
+def test_load_expose_config_instance_emails_override_shared(tmp_path):
+    # CREW_ALLOWED_EMAILS in instance.env overrides the shared default,
+    # while client/secret/cookie stay shared.
+    _setup_shared(tmp_path,
+        "CREW_GOOGLE_CLIENT_ID=cid\n"
+        "CREW_GOOGLE_CLIENT_SECRET=sec\n"
+        "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n"
+        "CREW_ALLOWED_EMAILS=shared@x.com\n")
+    d = tmp_path / "instances" / "alice"
+    d.mkdir(parents=True)
+    (d / "instance.env").write_text("CREW_ALLOWED_EMAILS=inst@y.com, two@y.com\n")
+    cfg = expose.load_expose_config(tmp_path, "alice")
+    assert cfg.allowed_emails == ["inst@y.com", "two@y.com"]
+    assert cfg.client_id == "cid"  # client stays shared
+
+
+def test_load_expose_config_instance_falls_back_to_shared_emails(tmp_path):
+    _setup_shared(tmp_path,
+        "CREW_GOOGLE_CLIENT_ID=cid\n"
+        "CREW_GOOGLE_CLIENT_SECRET=sec\n"
+        "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n"
+        "CREW_ALLOWED_EMAILS=shared@x.com\n")
+    d = tmp_path / "instances" / "alice"
+    d.mkdir(parents=True)
+    (d / "instance.env").write_text("CREW_PORT=9120\n")  # no per-instance emails
+    cfg = expose.load_expose_config(tmp_path, "alice")
+    assert cfg.allowed_emails == ["shared@x.com"]
+
+
 def test_render_oauth2_env_contains_all_keys():
     cfg = expose.ExposeConfig("cid", "sec", "c" * 32, ["a@x.com"])
     txt = expose.render_oauth2_env(

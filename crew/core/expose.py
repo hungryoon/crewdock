@@ -29,9 +29,9 @@ _REQUIRED_SHARED = {
 }
 
 
-def load_expose_config(root: Path) -> ExposeConfig:
-    env = parse_env_file(paths.shared_env_path(root))
-    missing = [k for k in _REQUIRED_SHARED if not env.get(k)]
+def load_expose_config(root: Path, name: str | None = None) -> ExposeConfig:
+    shared = parse_env_file(paths.shared_env_path(root))
+    missing = [k for k in _REQUIRED_SHARED if not shared.get(k)]
     if missing:
         raise ExposeError(
             "missing Google OAuth config in instances/_shared.env: "
@@ -39,15 +39,20 @@ def load_expose_config(root: Path) -> ExposeConfig:
             + "\nadd CREW_GOOGLE_CLIENT_ID, CREW_GOOGLE_CLIENT_SECRET, and "
               "CREW_OAUTH_COOKIE_SECRET (optionally CREW_ALLOWED_EMAILS)."
         )
-    emails = [
-        e.strip()
-        for e in env.get("CREW_ALLOWED_EMAILS", "").split(",")
-        if e.strip()
-    ]
+    # The Google client/secret/cookie are shared across all instances, but the
+    # access whitelist can be per-instance: CREW_ALLOWED_EMAILS in the instance's
+    # instance.env overrides the shared default (instance.env > _shared.env,
+    # matching crewdock's credential layering).
+    raw_emails = shared.get("CREW_ALLOWED_EMAILS", "")
+    if name is not None:
+        inst = parse_env_file(paths.instance_env_path(root, name))
+        if inst.get("CREW_ALLOWED_EMAILS"):
+            raw_emails = inst["CREW_ALLOWED_EMAILS"]
+    emails = [e.strip() for e in raw_emails.split(",") if e.strip()]
     return ExposeConfig(
-        client_id=env["CREW_GOOGLE_CLIENT_ID"],
-        client_secret=env["CREW_GOOGLE_CLIENT_SECRET"],
-        cookie_secret=env["CREW_OAUTH_COOKIE_SECRET"],
+        client_id=shared["CREW_GOOGLE_CLIENT_ID"],
+        client_secret=shared["CREW_GOOGLE_CLIENT_SECRET"],
+        cookie_secret=shared["CREW_OAUTH_COOKIE_SECRET"],
         allowed_emails=emails,
     )
 
@@ -144,7 +149,7 @@ def _run_quiet(argv: list[str]) -> None:
 def expose(root: Path, name: str) -> dict:
     if not paths.instance_dir(root, name).exists():
         raise InstanceNotFoundError(f"no such instance: {name}")
-    cfg = load_expose_config(root)
+    cfg = load_expose_config(root, name)
     check_tailscale_up(run_capture=_run_capture)
     dashport = paths.read_port(root, name)
     if not dashport:
