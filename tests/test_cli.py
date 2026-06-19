@@ -70,6 +70,10 @@ def test_layers_command_lists_pool(monkeypatch, root):
 def test_expose_invokes_core_and_prints_url(monkeypatch, root):
     _patch(monkeypatch, root)
     from crew.core import expose as expose_mod
+    from crew.core.models import Instance
+    monkeypatch.setattr(manager, "status",
+        lambda r, name: Instance(name=name, type="hermes", port=9120,
+                                 image="img", state="running"))
     monkeypatch.setattr(expose_mod, "expose", lambda r, name: {
         "url": "https://box.ts.net:9120/",
         "redirect_uri": "https://box.ts.net:9120/oauth2/callback",
@@ -79,6 +83,21 @@ def test_expose_invokes_core_and_prints_url(monkeypatch, root):
     assert result.exit_code == 0
     assert "https://box.ts.net:9120/" in result.stdout
     assert "oauth2/callback" in result.stdout
+
+
+def test_expose_refuses_when_instance_not_running(monkeypatch, root):
+    _patch(monkeypatch, root)
+    from crew.core import expose as expose_mod
+    from crew.core.models import Instance
+    monkeypatch.setattr(manager, "status",
+        lambda r, name: Instance(name=name, type="hermes", port=9120,
+                                 image="img", state="stopped"))
+    called = []
+    monkeypatch.setattr(expose_mod, "expose",
+                        lambda r, name: called.append(name))
+    result = runner.invoke(cli.app, ["expose", "alice"])
+    assert result.exit_code != 0
+    assert called == []  # core expose() never invoked for a stopped instance
 
 
 def test_unexpose_invokes_core(monkeypatch, root):

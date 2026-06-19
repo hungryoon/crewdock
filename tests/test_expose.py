@@ -155,6 +155,9 @@ def test_expose_oauth2_env_is_owner_only(tmp_path, monkeypatch):
     expose.expose(tmp_path, "alice")
     mode = (tmp_path / "instances" / "alice" / "expose" / "oauth2.env").stat().st_mode
     assert stat.S_IMODE(mode) == 0o600
+    edir = tmp_path / "instances" / "alice" / "expose"
+    assert stat.S_IMODE(edir.stat().st_mode) == 0o700
+    assert stat.S_IMODE((edir / "emails.txt").stat().st_mode) == 0o600
 
 
 def test_expose_rolls_back_container_when_serve_fails(tmp_path, monkeypatch):

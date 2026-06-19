@@ -156,8 +156,10 @@ def expose(root: Path, name: str) -> dict:
 
     edir = paths.expose_dir(root, name)
     edir.mkdir(parents=True, exist_ok=True)
+    edir.chmod(0o700)
     emails_file = edir / "emails.txt"
     emails_file.write_text("\n".join(cfg.allowed_emails) + "\n")
+    emails_file.chmod(0o600)
     env_file = edir / "oauth2.env"
     env_file.write_text(render_oauth2_env(cfg, authport, dashport, redirect))
     env_file.chmod(0o600)

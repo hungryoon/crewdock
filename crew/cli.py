@@ -7,7 +7,7 @@ import typer
 
 from .core import manager
 from .core import expose as expose_mod
-from .core.errors import CrewError
+from .core.errors import CrewError, ExposeError
 
 app = typer.Typer(help="Host a crew of isolated AI-assistant agent containers.")
 
@@ -58,6 +58,11 @@ def rm(name: str, purge: bool = typer.Option(False, help="also delete data/")):
 def expose(name: str):
     """Expose an instance's dashboard over Tailscale behind Google SSO."""
     try:
+        inst = manager.status(_root(), name)
+        if inst.state != "running":
+            raise ExposeError(
+                f"{name} is not running (state: {inst.state}) — "
+                f"start it first with: crew start {name}")
         info = expose_mod.expose(_root(), name)
     except CrewError as exc:
         _fail(exc)
