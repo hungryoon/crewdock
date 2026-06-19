@@ -6,6 +6,7 @@ from typing import NoReturn
 import typer
 
 from .core import manager
+from .core import expose as expose_mod
 from .core.errors import CrewError
 
 app = typer.Typer(help="Host a crew of isolated AI-assistant agent containers.")
@@ -51,6 +52,29 @@ def rm(name: str, purge: bool = typer.Option(False, help="also delete data/")):
     except CrewError as exc:
         _fail(exc)
     typer.echo(f"removed {name}" + (" (purged)" if purge else " (data kept)"))
+
+
+@app.command()
+def expose(name: str):
+    """Expose an instance's dashboard over Tailscale behind Google SSO."""
+    try:
+        info = expose_mod.expose(_root(), name)
+    except CrewError as exc:
+        _fail(exc)
+    typer.echo(f"exposed {name} -> {info['url']}")
+    typer.echo("  if this instance is new, add this redirect URI to your "
+               "Google OAuth client:")
+    typer.echo(f"    {info['redirect_uri']}")
+
+
+@app.command()
+def unexpose(name: str):
+    """Stop exposing an instance's dashboard."""
+    try:
+        expose_mod.unexpose(_root(), name)
+    except CrewError as exc:
+        _fail(exc)
+    typer.echo(f"unexposed {name}")
 
 
 @app.command(name="list")

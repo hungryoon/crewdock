@@ -65,3 +65,27 @@ def test_layers_command_lists_pool(monkeypatch, root):
     result = runner.invoke(cli.app, ["layers"])
     assert result.exit_code == 0
     assert "knowledge" in result.stdout
+
+
+def test_expose_invokes_core_and_prints_url(monkeypatch, root):
+    _patch(monkeypatch, root)
+    from crew.core import expose as expose_mod
+    monkeypatch.setattr(expose_mod, "expose", lambda r, name: {
+        "url": "https://box.ts.net:9120/",
+        "redirect_uri": "https://box.ts.net:9120/oauth2/callback",
+        "https_port": 9120,
+    })
+    result = runner.invoke(cli.app, ["expose", "alice"])
+    assert result.exit_code == 0
+    assert "https://box.ts.net:9120/" in result.stdout
+    assert "oauth2/callback" in result.stdout
+
+
+def test_unexpose_invokes_core(monkeypatch, root):
+    _patch(monkeypatch, root)
+    from crew.core import expose as expose_mod
+    called = []
+    monkeypatch.setattr(expose_mod, "unexpose", lambda r, name: called.append(name))
+    result = runner.invoke(cli.app, ["unexpose", "alice"])
+    assert result.exit_code == 0
+    assert called == ["alice"]
