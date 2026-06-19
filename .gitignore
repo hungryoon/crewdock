@@ -4,6 +4,7 @@ instances/*/instance.env
 instances/*/docker-compose.yml
 instances/*/meta.json
 instances/_shared.env
+instances/*/expose/
 instances/.lock
 # keep the seed template
 !instances/_template/
