@@ -29,13 +29,15 @@ def test_load_expose_config_missing_secret_raises(tmp_path):
         expose.load_expose_config(tmp_path)
 
 
-def test_load_expose_config_allows_missing_emails(tmp_path):
+def test_load_expose_config_raises_without_emails(tmp_path):
+    # fail closed: an empty whitelist must refuse to expose, never fall through
+    # to an open dashboard.
     _setup_shared(tmp_path,
         "CREW_GOOGLE_CLIENT_ID=cid\n"
         "CREW_GOOGLE_CLIENT_SECRET=sec\n"
         "CREW_OAUTH_COOKIE_SECRET=" + "z" * 32 + "\n")
-    cfg = expose.load_expose_config(tmp_path)
-    assert cfg.allowed_emails == []
+    with pytest.raises(ExposeError, match="CREW_ALLOWED_EMAILS"):
+        expose.load_expose_config(tmp_path)
 
 
 def test_load_expose_config_instance_emails_override_shared(tmp_path):
@@ -79,7 +81,9 @@ def test_render_oauth2_env_contains_all_keys():
     assert "OAUTH2_PROXY_REDIRECT_URL=https://h.ts.net:9120/oauth2/callback" in txt
     assert "OAUTH2_PROXY_UPSTREAMS=http://127.0.0.1:9120/" in txt
     assert "OAUTH2_PROXY_HTTP_ADDRESS=127.0.0.1:9300" in txt
-    assert "OAUTH2_PROXY_EMAIL_DOMAINS=*" in txt
+    # no email-domain wildcard: it would bypass the emails file (OR logic),
+    # letting ANY Google account in. The emails file is the sole allowlist.
+    assert "OAUTH2_PROXY_EMAIL_DOMAINS" not in txt
     assert "OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE=/etc/oauth2-proxy/emails.txt" in txt
     assert "OAUTH2_PROXY_REVERSE_PROXY=true" in txt
 

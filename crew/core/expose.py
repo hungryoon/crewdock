@@ -49,6 +49,12 @@ def load_expose_config(root: Path, name: str | None = None) -> ExposeConfig:
         if inst.get("CREW_ALLOWED_EMAILS"):
             raw_emails = inst["CREW_ALLOWED_EMAILS"]
     emails = [e.strip() for e in raw_emails.split(",") if e.strip()]
+    if not emails:
+        raise ExposeError(
+            "CREW_ALLOWED_EMAILS is empty — refusing to expose with no access "
+            "whitelist. Set CREW_ALLOWED_EMAILS (comma-separated) in the "
+            "instance's instance.env or in instances/_shared.env."
+        )
     return ExposeConfig(
         client_id=shared["CREW_GOOGLE_CLIENT_ID"],
         client_secret=shared["CREW_GOOGLE_CLIENT_SECRET"],
@@ -71,7 +77,9 @@ def render_oauth2_env(cfg: ExposeConfig, authport: int, dashport: int,
         f"OAUTH2_PROXY_REDIRECT_URL={redirect}",
         f"OAUTH2_PROXY_UPSTREAMS=http://127.0.0.1:{dashport}/",
         f"OAUTH2_PROXY_HTTP_ADDRESS=127.0.0.1:{authport}",
-        "OAUTH2_PROXY_EMAIL_DOMAINS=*",
+        # NO OAUTH2_PROXY_EMAIL_DOMAINS: a "*" wildcard is checked before the
+        # emails file (OR logic) and would let ANY Google account in, bypassing
+        # the whitelist. The authenticated-emails-file is the sole allowlist.
         "OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE=/etc/oauth2-proxy/emails.txt",
         "OAUTH2_PROXY_REVERSE_PROXY=true",
         "OAUTH2_PROXY_COOKIE_SECURE=true",
