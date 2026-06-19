@@ -124,3 +124,55 @@ def check_tailscale_up(run_capture=_run_capture) -> None:
             "tailscale is not connected — run `tailscale up` first "
             "(and enable HTTPS for your tailnet)."
         )
+
+
+def _run(argv: list[str]) -> None:
+    try:
+        subprocess.run(argv, check=True)
+    except FileNotFoundError as exc:
+        raise ExposeError(f"{argv[0]} not found — is it installed?") from exc
+    except subprocess.CalledProcessError as exc:
+        raise ExposeError(
+            f"{' '.join(argv)} failed (exit {exc.returncode})") from exc
+
+
+def _run_quiet(argv: list[str]) -> None:
+    """Best-effort command for teardown; never raises."""
+    subprocess.run(argv, check=False, capture_output=True)
+
+
+def expose(root: Path, name: str) -> dict:
+    if not paths.instance_dir(root, name).exists():
+        raise InstanceNotFoundError(f"no such instance: {name}")
+    cfg = load_expose_config(root)
+    check_tailscale_up(run_capture=_run_capture)
+    dashport = paths.read_port(root, name)
+    if not dashport:
+        raise ExposeError(f"no dashboard port recorded for {name}")
+    host = tailnet_dns_name(run_capture=_run_capture)
+    https_port = dashport
+    redirect = redirect_url(host, https_port)
+    authport = find_free_port(set(), base=AUTH_BASE_PORT, max_port=AUTH_MAX_PORT)
+
+    edir = paths.expose_dir(root, name)
+    edir.mkdir(parents=True, exist_ok=True)
+    emails_file = edir / "emails.txt"
+    emails_file.write_text("\n".join(cfg.allowed_emails) + "\n")
+    env_file = edir / "oauth2.env"
+    env_file.write_text(render_oauth2_env(cfg, authport, dashport, redirect))
+    env_file.chmod(0o600)
+
+    _run_quiet(["docker", "rm", "-f", auth_container_name(name)])
+    _run(oauth2_run_argv(name, str(env_file.resolve()),
+                         str(emails_file.resolve())))
+    try:
+        _run(serve_argv(https_port, authport))
+    except CrewError:
+        _run_quiet(["docker", "rm", "-f", auth_container_name(name)])
+        raise
+
+    return {
+        "url": dashboard_url(host, https_port),
+        "redirect_uri": redirect,
+        "https_port": https_port,
+    }
