@@ -56,6 +56,11 @@ def _write_instance_env(root: Path, name: str, port: int, creds: dict,
             lines.append(f"{host_user_env['gid']}={gid}")
     for key, value in creds.items():
         lines.append(f"{key}={value}")
+    # Pre-seed the expose whitelist key (commented out, so inactive) so enabling
+    # `crew expose` is just "uncomment and fill in" — no need to recall the key.
+    lines.append("")
+    lines.append("# Uncomment + set Google accounts (comma-separated) to allow `crew expose`:")
+    lines.append("# CREW_ALLOWED_EMAILS=you@example.com")
     paths.instance_env_path(root, name).write_text("\n".join(lines) + "\n")
 
 

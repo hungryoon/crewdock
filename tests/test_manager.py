@@ -54,6 +54,17 @@ def test_create_builds_instance_and_runs_up(root, calls):
     assert ("crew-alice", ["up", "-d"]) in calls
 
 
+def test_create_seeds_commented_allowed_emails_hint(root, calls):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    env_path = paths.instance_env_path(root, "alice")
+    text = env_path.read_text()
+    # the key is pre-seeded as a hint, but commented out so it stays inactive
+    assert "# CREW_ALLOWED_EMAILS=" in text
+    from crew.core.creds import parse_env_file
+    assert "CREW_ALLOWED_EMAILS" not in parse_env_file(env_path)
+
+
 def test_create_rejects_duplicate(root, calls):
     _agents_dir(root)
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
