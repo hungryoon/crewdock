@@ -15,6 +15,7 @@ def render_compose(
     port: int,
     layers: list[str] | None = None,
     credential_keys: list[str] | None = None,
+    image: str | None = None,
 ) -> str:
     """Render docker-compose.yml text. `port` is recorded by the caller into
     instance.env as CREW_PORT; the compose file references it via ${CREW_PORT}.
@@ -37,7 +38,7 @@ def render_compose(
         if key not in passthrough:
             passthrough.append(key)
     return template.render(
-        image=manifest.image,
+        image=image or manifest.image,
         container_name=project_name(name),
         data_mount=manifest.data_mount,
         layers_mount=manifest.layers_mount or "/opt/shared",

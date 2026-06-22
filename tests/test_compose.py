@@ -140,3 +140,29 @@ def test_render_compose_credential_keys_dedupe_against_passthrough(manifest_file
     dup = m.passthrough_env[0]
     out = render_compose(m, "alice", 9120, credential_keys=[dup])
     assert out.count(f"{dup}=${{{dup}}}") == 1
+
+
+def test_render_compose_uses_image_override():
+    from crew.core.compose import render_compose
+    from crew.core.manifest import load_manifest
+    from tests.conftest import SAMPLE_MANIFEST
+    import tempfile, pathlib
+    d = pathlib.Path(tempfile.mkdtemp()) / "hermes.yaml"
+    d.write_text(SAMPLE_MANIFEST)
+    manifest = load_manifest(d)
+    out = render_compose(manifest, "alice", 9120,
+                         image="nousresearch/hermes-agent@sha256:abc")
+    assert "image: nousresearch/hermes-agent@sha256:abc" in out
+    assert "image: nousresearch/hermes-agent:latest" not in out
+
+
+def test_render_compose_falls_back_to_manifest_image():
+    from crew.core.compose import render_compose
+    from crew.core.manifest import load_manifest
+    from tests.conftest import SAMPLE_MANIFEST
+    import tempfile, pathlib
+    d = pathlib.Path(tempfile.mkdtemp()) / "hermes.yaml"
+    d.write_text(SAMPLE_MANIFEST)
+    manifest = load_manifest(d)
+    out = render_compose(manifest, "alice", 9120)
+    assert "image: nousresearch/hermes-agent:latest" in out
