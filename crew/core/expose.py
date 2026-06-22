@@ -1,17 +1,13 @@
 import json
-import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from .creds import parse_env_file
-from .errors import CrewError, ExposeError, InstanceNotFoundError
-from .ports import find_free_port
+from .errors import ExposeError, InstanceNotFoundError
 from . import paths
 
 OAUTH2_IMAGE = "quay.io/oauth2-proxy/oauth2-proxy:v7.6.0"
-AUTH_BASE_PORT = 9300
-AUTH_MAX_PORT = 9399
 
 
 @dataclass
@@ -80,47 +76,6 @@ def load_expose_config(root: Path, name: str) -> ExposeConfig:
     )
 
 
-def auth_container_name(name: str) -> str:
-    return f"{paths.project_name(name)}-auth"
-
-
-def render_oauth2_env(cfg: ExposeConfig, authport: int, dashport: int,
-                      redirect: str, cookie_name: str) -> str:
-    lines = [
-        "OAUTH2_PROXY_PROVIDER=google",
-        f"OAUTH2_PROXY_CLIENT_ID={cfg.client_id}",
-        f"OAUTH2_PROXY_CLIENT_SECRET={cfg.client_secret}",
-        f"OAUTH2_PROXY_COOKIE_SECRET={cfg.cookie_secret}",
-        # per-instance cookie name: all instances share one tailnet hostname, so
-        # a shared name collides and breaks independent multi-instance sessions.
-        f"OAUTH2_PROXY_COOKIE_NAME={cookie_name}",
-        f"OAUTH2_PROXY_REDIRECT_URL={redirect}",
-        f"OAUTH2_PROXY_UPSTREAMS=http://127.0.0.1:{dashport}/",
-        f"OAUTH2_PROXY_HTTP_ADDRESS=127.0.0.1:{authport}",
-        # NO OAUTH2_PROXY_EMAIL_DOMAINS: a "*" wildcard is checked before the
-        # emails file (OR logic) and would let ANY Google account in, bypassing
-        # the whitelist. The authenticated-emails-file is the sole allowlist.
-        "OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE=/etc/oauth2-proxy/emails.txt",
-        "OAUTH2_PROXY_REVERSE_PROXY=true",
-        "OAUTH2_PROXY_COOKIE_SECURE=true",
-        # Rewrite the Host header to the upstream (127.0.0.1) instead of passing
-        # the public tailnet hostname. Dashboards that validate the Host header
-        # against their bind address (e.g. Hermes) otherwise reject the request.
-        "OAUTH2_PROXY_PASS_HOST_HEADER=false",
-    ]
-    return "\n".join(lines) + "\n"
-
-
-def oauth2_run_argv(name: str, env_file_abs: str, emails_file_abs: str) -> list[str]:
-    return [
-        "docker", "run", "-d", "--name", auth_container_name(name),
-        "--network", "host", "--restart", "unless-stopped",
-        "--env-file", env_file_abs,
-        "-v", f"{emails_file_abs}:/etc/oauth2-proxy/emails.txt:ro",
-        OAUTH2_IMAGE,
-    ]
-
-
 def serve_argv(https_port: int, authport: int) -> list[str]:
     return ["tailscale", "serve", "--bg", f"--https={https_port}",
             f"http://127.0.0.1:{authport}"]
@@ -178,62 +133,31 @@ def _run_quiet(argv: list[str]) -> None:
     subprocess.run(argv, check=False, capture_output=True)
 
 
-def expose(root: Path, name: str) -> dict:
+def expose(root: Path, name: str) -> None:
+    """Publish an instance to the gateway (mark it; require a whitelist)."""
     if not paths.instance_dir(root, name).exists():
         raise InstanceNotFoundError(f"no such instance: {name}")
-    cfg = load_expose_config(root, name)
-    check_tailscale_up(run_capture=_run_capture)
-    dashport = paths.read_port(root, name)
-    if not dashport:
-        raise ExposeError(f"no dashboard port recorded for {name}")
-    host = tailnet_dns_name(run_capture=_run_capture)
-    https_port = dashport
-    redirect = redirect_url(host, https_port)
-    authport = find_free_port(set(), base=AUTH_BASE_PORT, max_port=AUTH_MAX_PORT)
-
-    edir = paths.expose_dir(root, name)
-    edir.mkdir(parents=True, exist_ok=True)
-    edir.chmod(0o700)
-    emails_file = edir / "emails.txt"
-    emails_file.write_text("\n".join(cfg.allowed_emails) + "\n")
-    emails_file.chmod(0o600)
-    env_file = edir / "oauth2.env"
-    env_file.write_text(
-        render_oauth2_env(cfg, authport, dashport, redirect,
-                          cookie_name=f"_crew_{name}"))
-    env_file.chmod(0o600)
-
-    _run_quiet(["docker", "rm", "-f", auth_container_name(name)])
-    _run(oauth2_run_argv(name, str(env_file.resolve()),
-                         str(emails_file.resolve())))
-    try:
-        _run(serve_argv(https_port, authport))
-    except CrewError:
-        _run_quiet(["docker", "rm", "-f", auth_container_name(name)])
-        raise
-
-    return {
-        "url": dashboard_url(host, https_port),
-        "redirect_uri": redirect,
-        "https_port": https_port,
-    }
+    raw = parse_env_file(paths.instance_env_path(root, name)).get(
+        "CREW_ALLOWED_EMAILS", "")
+    if not [e for e in raw.split(",") if e.strip()]:
+        raise ExposeError(
+            "CREW_ALLOWED_EMAILS is empty — set it (comma-separated) in "
+            f"instances/{name}/instance.env before exposing."
+        )
+    paths.exposed_marker_path(root, name).write_text("")
+    from crew.core import gateway
+    if gateway.gateway_running():
+        gateway.regenerate_union_emails(root)
 
 
 def unexpose(root: Path, name: str) -> None:
-    dashport = paths.read_port(root, name)
-    if dashport:
-        _run_quiet(serve_off_argv(dashport))
-    _run_quiet(["docker", "rm", "-f", auth_container_name(name)])
-    edir = paths.expose_dir(root, name)
-    if edir.exists():
-        shutil.rmtree(edir, ignore_errors=True)
+    marker = paths.exposed_marker_path(root, name)
+    if marker.exists():
+        marker.unlink()
+    from crew.core import gateway
+    if gateway.gateway_running():
+        gateway.regenerate_union_emails(root)
 
 
-def is_exposed(name: str, run_capture=None) -> bool:
-    # None sentinel (not a =_run_capture default) so it resolves at call time —
-    # lets tests `monkeypatch.setattr(expose, "_run_capture", ...)` take effect.
-    if run_capture is None:
-        run_capture = _run_capture
-    out = run_capture(
-        ["docker", "ps", "-q", "-f", f"name=^{auth_container_name(name)}$"])
-    return bool(out.strip())
+def is_exposed_for(root: Path, name: str) -> bool:
+    return paths.exposed_marker_path(root, name).exists()
