@@ -396,3 +396,37 @@ def test_bare_update_renders_from_instance_pin(root, calls):
     assert "previous_image" not in meta2
     assert ("crew-alice", ["pull"]) in calls
     assert ("crew-alice", ["up", "-d"]) in calls
+
+
+def test_update_image_sets_pin_and_previous(root, calls):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    manager.update(root, "alice", image="nousresearch/hermes-agent@sha256:new")
+    meta = paths.read_meta(root, "alice")
+    assert meta["image"] == "nousresearch/hermes-agent@sha256:new"
+    assert meta["previous_image"] == "nousresearch/hermes-agent:latest"
+    compose = paths.compose_path(root, "alice").read_text()
+    assert "image: nousresearch/hermes-agent@sha256:new" in compose
+
+
+def test_update_image_restores_on_pull_failure(root, monkeypatch):
+    _agents_dir(root)
+    def ok_run(project, compose_file, env_files, args, capture=False):
+        class R: stdout = ""
+        return R()
+    monkeypatch.setattr(manager, "run_compose", ok_run)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    old_compose = paths.compose_path(root, "alice").read_text()
+    def boom(project, compose_file, env_files, args, capture=False):
+        if args == ["pull"]:
+            raise RuntimeError("no such image")
+        class R: stdout = ""
+        return R()
+    monkeypatch.setattr(manager, "run_compose", boom)
+    import pytest
+    with pytest.raises(RuntimeError):
+        manager.update(root, "alice", image="nousresearch/hermes-agent@sha256:typo")
+    meta = paths.read_meta(root, "alice")
+    assert meta["image"] == "nousresearch/hermes-agent:latest"
+    assert "previous_image" not in meta
+    assert paths.compose_path(root, "alice").read_text() == old_compose

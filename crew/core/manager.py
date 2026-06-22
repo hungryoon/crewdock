@@ -281,11 +281,12 @@ def _render_instance(root: Path, name: str, meta: dict, manifest, image: str) ->
     )
 
 
-def update(root: Path, name: str, backup: bool = False) -> None:
-    """Re-render compose (applies layer/manifest/cred changes), pull the
-    instance's pinned image, and recreate. Re-reads both env-files so
-    _shared.env changes propagate. Does NOT change the image pin.
-    With backup=True, snapshot data/ first."""
+def update(root: Path, name: str, backup: bool = False,
+           image: str | None = None) -> None:
+    """Re-render compose, pull the instance's image, and recreate.
+    Bare (no image) keeps the pin; image=<ref> repins atomically
+    (restores meta+compose if pull/up fails). With backup=True, snapshot
+    data/ first."""
     _require_exists(root, name)
     if backup:
         src = paths.instance_dir(root, name) / "data"
@@ -294,9 +295,37 @@ def update(root: Path, name: str, backup: bool = False) -> None:
     meta = paths.read_meta(root, name)
     manifest = load_manifest(_manifest_path(root, meta.get("type", "")))
     current = meta.get("image", manifest.image)
-    _render_instance(root, name, meta, manifest, current)
     project = paths.project_name(name)
     compose_file = paths.compose_path(root, name)
     env_files = _env_files(root, name)
-    run_compose(project, compose_file, env_files, ["pull"])
-    run_compose(project, compose_file, env_files, ["up", "-d"])
+
+    if image is None:
+        _render_instance(root, name, meta, manifest, current)
+        run_compose(project, compose_file, env_files, ["pull"])
+        run_compose(project, compose_file, env_files, ["up", "-d"])
+        return
+
+    _repin(root, name, meta, manifest, target=image, new_previous=current)
+
+
+def _repin(root: Path, name: str, meta: dict, manifest, target: str,
+           new_previous: str) -> None:
+    """Atomically switch an instance to `target` image. Records
+    previous_image=new_previous. Restores meta+compose if pull/up fails."""
+    old_meta = dict(meta)
+    old_compose = paths.compose_path(root, name).read_text()
+    new_meta = dict(meta)
+    new_meta["image"] = target
+    new_meta["previous_image"] = new_previous
+    paths.write_meta(root, name, new_meta)
+    _render_instance(root, name, new_meta, manifest, target)
+    project = paths.project_name(name)
+    compose_file = paths.compose_path(root, name)
+    env_files = _env_files(root, name)
+    try:
+        run_compose(project, compose_file, env_files, ["pull"])
+        run_compose(project, compose_file, env_files, ["up", "-d"])
+    except Exception:
+        paths.write_meta(root, name, old_meta)
+        paths.compose_path(root, name).write_text(old_compose)
+        raise
