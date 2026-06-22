@@ -51,7 +51,8 @@ async def _proxy_http(request, port, tail, prefix) -> web.StreamResponse:
     headers = routing.proxy_request_headers(dict(request.headers), prefix)
     body = await request.read()
     try:
-        async with aiohttp.ClientSession(auto_decompress=False) as session:
+        timeout = aiohttp.ClientTimeout(total=None, connect=5, sock_connect=5)
+        async with aiohttp.ClientSession(auto_decompress=False, timeout=timeout) as session:
             async with session.request(
                 request.method, url, headers=headers, params=request.query,
                 data=body, allow_redirects=False,
@@ -105,5 +106,20 @@ def build_app() -> web.Application:
 
 
 def main() -> None:
-    port = int(os.environ.get("CREW_ROUTER_PORT", "9400"))
-    web.run_app(build_app(), host="127.0.0.1", port=port)
+    sock = os.environ.get("CREW_ROUTER_SOCK")
+    if not sock:
+        port = int(os.environ.get("CREW_ROUTER_PORT", "9400"))
+        web.run_app(build_app(), host="127.0.0.1", port=port)
+        return
+
+    async def _serve_unix() -> None:
+        runner = web.AppRunner(build_app())
+        await runner.setup()
+        if os.path.exists(sock):
+            os.unlink(sock)          # clear a stale socket from a prior run
+        site = web.UnixSite(runner, sock)
+        await site.start()
+        os.chmod(sock, 0o666)        # allow the non-root oauth2-proxy to connect
+        await asyncio.Event().wait()  # run forever (container lifetime)
+
+    asyncio.run(_serve_unix())

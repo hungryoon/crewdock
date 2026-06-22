@@ -5,12 +5,13 @@ from crew.core.expose import ExposeConfig
 def test_render_gateway_oauth2_env():
     cfg = ExposeConfig("cid", "sec", "c" * 32, [])
     txt = gateway.render_gateway_oauth2_env(
-        cfg, authport=9401, routerport=9400,
+        cfg, authport=9401,
         redirect="https://h.ts.net/oauth2/callback")
     assert "OAUTH2_PROXY_PROVIDER=google" in txt
     assert "OAUTH2_PROXY_CLIENT_ID=cid" in txt
     assert "OAUTH2_PROXY_REDIRECT_URL=https://h.ts.net/oauth2/callback" in txt
-    assert "OAUTH2_PROXY_UPSTREAMS=http://127.0.0.1:9400/" in txt
+    assert "OAUTH2_PROXY_UPSTREAMS=unix:///run/crew-gw/router.sock" in txt
+    assert "http://127.0.0.1" not in txt
     assert "OAUTH2_PROXY_HTTP_ADDRESS=127.0.0.1:9401" in txt
     assert "OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE=/etc/oauth2-proxy/emails.txt" in txt
     assert "OAUTH2_PROXY_PASS_USER_HEADERS=true" in txt
@@ -29,12 +30,14 @@ def test_router_image_and_build_argv():
 
 
 def test_router_run_argv():
-    argv = gateway.router_run_argv(root_abs="/abs/root", router_port=9400)
+    argv = gateway.router_run_argv(root_abs="/abs/root", sock_dir_host="/abs/gw/run")
     assert argv[:7] == ["docker", "run", "-d", "--pull", "never",
                         "--name", "crew-gateway-router"]
     assert "--network" in argv and "host" in argv
     assert any(a == "/abs/root/instances:/crew/instances:ro" for a in argv)
-    assert "CREW_ROUTER_PORT=9400" in argv
+    assert any(a == "/abs/gw/run:/run/crew-gw" for a in argv)
+    assert "CREW_ROUTER_SOCK=/run/crew-gw/router.sock" in argv
+    assert not any(a.startswith("CREW_ROUTER_PORT") for a in argv)
     assert "CREW_ROOT=/crew" in argv
     assert argv[-1] == gateway.ROUTER_IMAGE
 
@@ -102,6 +105,9 @@ def test_gateway_up_rolls_back_on_run_failure(tmp_path, monkeypatch):
             raise ExposeError("serve boom")
     monkeypatch.setattr(gateway, "_run", fake_run)
 
+    from crew.core import paths
+    gdir = paths.gateway_dir(tmp_path)
+
     with pytest.raises(ExposeError):
         gateway.gateway_up(tmp_path)
     # both containers removed during rollback
@@ -109,3 +115,5 @@ def test_gateway_up_rolls_back_on_run_failure(tmp_path, monkeypatch):
                for q in quiet)
     assert any(q[:3] == ["docker", "rm", "-f"] and q[3] == gateway.GATEWAY_AUTH_CONTAINER
                for q in quiet)
+    # gdir is cleaned up on failure
+    assert not gdir.exists()
