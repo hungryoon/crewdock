@@ -478,3 +478,13 @@ def test_update_rejects_combined_version_flags(root, calls):
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     with pytest.raises(CrewError, match="only one of"):
         manager.update(root, "alice", image="x:1", rollback=True)
+
+
+def test_status_reports_previous_image(root, calls, monkeypatch):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    manager.update(root, "alice", image="nousresearch/hermes-agent@sha256:v2")
+    monkeypatch.setattr(manager, "_compose_state", lambda root, name: "running")
+    inst = manager.status(root, "alice")
+    assert inst.image == "nousresearch/hermes-agent@sha256:v2"
+    assert inst.previous_image == "nousresearch/hermes-agent:latest"

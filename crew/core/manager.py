@@ -210,6 +210,7 @@ def status(root: Path, name: str) -> Instance:
         type=meta.get("type", "unknown"),
         port=port,
         image=meta.get("image", "unknown"),
+        previous_image=meta.get("previous_image", ""),
         state=_compose_state(root, name),
         created_at=meta.get("created_at", ""),
     )

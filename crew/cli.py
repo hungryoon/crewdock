@@ -123,8 +123,11 @@ def status(name: str):
         i = manager.status(_root(), name)
     except CrewError as exc:
         _fail(exc)
-    typer.echo(f"{i.name}: {i.state}  type={i.type}  image={i.image}  "
-               f"{i.dashboard_url}")
+    line = (f"{i.name}: {i.state}  type={i.type}  image={i.image}  "
+            f"{i.dashboard_url}")
+    if i.previous_image:
+        line += f"\n  rollback available: {i.previous_image}"
+    typer.echo(line)
 
 
 @app.command()

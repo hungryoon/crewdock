@@ -147,3 +147,16 @@ def test_cli_update_image_calls_manager(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert captured["image"] == "nousresearch/hermes-agent@sha256:x"
     assert captured["rollback"] is False
+
+
+def test_cli_status_shows_rollback_available(monkeypatch, tmp_path):
+    from crew import cli
+    from crew.core.models import Instance
+    inst = Instance(name="alice", type="hermes", port=9120,
+                    image="img@sha256:new", previous_image="img:latest",
+                    state="running")
+    monkeypatch.setattr(cli.manager, "status", lambda root, name: inst)
+    monkeypatch.setattr(cli, "_root", lambda: tmp_path)
+    result = runner.invoke(cli.app, ["status", "alice"])
+    assert result.exit_code == 0
+    assert "rollback available: img:latest" in result.stdout
