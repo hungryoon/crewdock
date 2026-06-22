@@ -35,6 +35,14 @@ def shared_env_path(root: Path) -> Path:
     return instances_dir(root) / "_shared.env"
 
 
+def gateway_dir(root: Path) -> Path:
+    return instances_dir(root) / "_gateway"
+
+
+def exposed_marker_path(root: Path, name: str) -> Path:
+    return instance_dir(root, name) / "exposed"
+
+
 def instance_env_path(root: Path, name: str) -> Path:
     return instance_dir(root, name) / "instance.env"
 
