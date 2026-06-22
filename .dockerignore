@@ -1,0 +1,10 @@
+instances/
+.git/
+docs/
+agents/
+layers/
+tests/
+**/__pycache__/
+**/*.pyc
+.venv/
+.pytest_cache/
