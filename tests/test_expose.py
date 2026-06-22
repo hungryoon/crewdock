@@ -10,13 +10,21 @@ def _setup_shared(root, body):
     (inst / "_shared.env").write_text(body)
 
 
-def test_load_expose_config_reads_shared_env(tmp_path):
-    _setup_shared(tmp_path,
+def _shared_oauth(root):
+    # shared infra only: client/secret/cookie. NO emails here — the whitelist
+    # is per-instance.
+    _setup_shared(root,
         "CREW_GOOGLE_CLIENT_ID=cid\n"
         "CREW_GOOGLE_CLIENT_SECRET=sec\n"
-        "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n"
-        "CREW_ALLOWED_EMAILS=a@x.com, b@y.com\n")
-    cfg = expose.load_expose_config(tmp_path)
+        "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n")
+
+
+def test_load_expose_config_reads_shared_oauth_and_instance_emails(tmp_path):
+    _shared_oauth(tmp_path)
+    d = tmp_path / "instances" / "alice"
+    d.mkdir(parents=True)
+    (d / "instance.env").write_text("CREW_ALLOWED_EMAILS=a@x.com, b@y.com\n")
+    cfg = expose.load_expose_config(tmp_path, "alice")
     assert cfg.client_id == "cid"
     assert cfg.client_secret == "sec"
     assert cfg.cookie_secret == "a" * 32
@@ -26,23 +34,23 @@ def test_load_expose_config_reads_shared_env(tmp_path):
 def test_load_expose_config_missing_secret_raises(tmp_path):
     _setup_shared(tmp_path, "CREW_GOOGLE_CLIENT_ID=cid\n")
     with pytest.raises(ExposeError, match="CREW_GOOGLE_CLIENT_SECRET"):
-        expose.load_expose_config(tmp_path)
+        expose.load_expose_config(tmp_path, "alice")
 
 
-def test_load_expose_config_raises_without_emails(tmp_path):
-    # fail closed: an empty whitelist must refuse to expose, never fall through
-    # to an open dashboard.
-    _setup_shared(tmp_path,
-        "CREW_GOOGLE_CLIENT_ID=cid\n"
-        "CREW_GOOGLE_CLIENT_SECRET=sec\n"
-        "CREW_OAUTH_COOKIE_SECRET=" + "z" * 32 + "\n")
+def test_load_expose_config_raises_without_instance_emails(tmp_path):
+    # fail closed: no per-instance whitelist -> refuse to expose. The whitelist
+    # is NEVER inherited from _shared.env.
+    _shared_oauth(tmp_path)
+    d = tmp_path / "instances" / "alice"
+    d.mkdir(parents=True)
+    (d / "instance.env").write_text("CREW_PORT=9120\n")  # no emails
     with pytest.raises(ExposeError, match="CREW_ALLOWED_EMAILS"):
-        expose.load_expose_config(tmp_path)
+        expose.load_expose_config(tmp_path, "alice")
 
 
-def test_load_expose_config_instance_emails_override_shared(tmp_path):
-    # CREW_ALLOWED_EMAILS in instance.env overrides the shared default,
-    # while client/secret/cookie stay shared.
+def test_load_expose_config_ignores_shared_emails(tmp_path):
+    # Even if someone puts CREW_ALLOWED_EMAILS in _shared.env, it is NOT used —
+    # only the per-instance value counts (no shared inheritance).
     _setup_shared(tmp_path,
         "CREW_GOOGLE_CLIENT_ID=cid\n"
         "CREW_GOOGLE_CLIENT_SECRET=sec\n"
@@ -50,23 +58,9 @@ def test_load_expose_config_instance_emails_override_shared(tmp_path):
         "CREW_ALLOWED_EMAILS=shared@x.com\n")
     d = tmp_path / "instances" / "alice"
     d.mkdir(parents=True)
-    (d / "instance.env").write_text("CREW_ALLOWED_EMAILS=inst@y.com, two@y.com\n")
+    (d / "instance.env").write_text("CREW_ALLOWED_EMAILS=inst@y.com\n")
     cfg = expose.load_expose_config(tmp_path, "alice")
-    assert cfg.allowed_emails == ["inst@y.com", "two@y.com"]
-    assert cfg.client_id == "cid"  # client stays shared
-
-
-def test_load_expose_config_instance_falls_back_to_shared_emails(tmp_path):
-    _setup_shared(tmp_path,
-        "CREW_GOOGLE_CLIENT_ID=cid\n"
-        "CREW_GOOGLE_CLIENT_SECRET=sec\n"
-        "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n"
-        "CREW_ALLOWED_EMAILS=shared@x.com\n")
-    d = tmp_path / "instances" / "alice"
-    d.mkdir(parents=True)
-    (d / "instance.env").write_text("CREW_PORT=9120\n")  # no per-instance emails
-    cfg = expose.load_expose_config(tmp_path, "alice")
-    assert cfg.allowed_emails == ["shared@x.com"]
+    assert cfg.allowed_emails == ["inst@y.com"]  # shared@x.com ignored
 
 
 def test_render_oauth2_env_contains_all_keys():
@@ -134,15 +128,17 @@ def test_check_tailscale_up_raises_when_not_running():
 def _setup_instance(root, name="alice", port=9120):
     d = root / "instances" / name
     d.mkdir(parents=True, exist_ok=True)
-    (d / "instance.env").write_text(f"CREW_PORT={port}\n")
+    # whitelist is per-instance — it lives in instance.env, not _shared.env
+    (d / "instance.env").write_text(
+        f"CREW_PORT={port}\nCREW_ALLOWED_EMAILS=a@x.com\n")
 
 
 def _full_shared(root):
+    # shared infra only — no emails (those are per-instance, in instance.env)
     _setup_shared(root,
         "CREW_GOOGLE_CLIENT_ID=cid\n"
         "CREW_GOOGLE_CLIENT_SECRET=sec\n"
-        "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n"
-        "CREW_ALLOWED_EMAILS=a@x.com\n")
+        "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n")
 
 
 def test_expose_runs_oauth2_then_serve_and_writes_files(tmp_path, monkeypatch):

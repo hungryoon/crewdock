@@ -29,7 +29,7 @@ _REQUIRED_SHARED = {
 }
 
 
-def load_expose_config(root: Path, name: str | None = None) -> ExposeConfig:
+def load_expose_config(root: Path, name: str) -> ExposeConfig:
     shared = parse_env_file(paths.shared_env_path(root))
     missing = [k for k in _REQUIRED_SHARED if not shared.get(k)]
     if missing:
@@ -37,23 +37,22 @@ def load_expose_config(root: Path, name: str | None = None) -> ExposeConfig:
             "missing Google OAuth config in instances/_shared.env: "
             + ", ".join(missing)
             + "\nadd CREW_GOOGLE_CLIENT_ID, CREW_GOOGLE_CLIENT_SECRET, and "
-              "CREW_OAUTH_COOKIE_SECRET (optionally CREW_ALLOWED_EMAILS)."
+              "CREW_OAUTH_COOKIE_SECRET."
         )
-    # The Google client/secret/cookie are shared across all instances, but the
-    # access whitelist can be per-instance: CREW_ALLOWED_EMAILS in the instance's
-    # instance.env overrides the shared default (instance.env > _shared.env,
-    # matching crewdock's credential layering).
-    raw_emails = shared.get("CREW_ALLOWED_EMAILS", "")
-    if name is not None:
-        inst = parse_env_file(paths.instance_env_path(root, name))
-        if inst.get("CREW_ALLOWED_EMAILS"):
-            raw_emails = inst["CREW_ALLOWED_EMAILS"]
-    emails = [e.strip() for e in raw_emails.split(",") if e.strip()]
+    # The Google client/secret/cookie are shared, but the access whitelist is
+    # per-instance ONLY: read from the instance's instance.env, never from
+    # _shared.env — so a new instance can't silently inherit another's allow-list.
+    inst = parse_env_file(paths.instance_env_path(root, name))
+    emails = [
+        e.strip()
+        for e in inst.get("CREW_ALLOWED_EMAILS", "").split(",")
+        if e.strip()
+    ]
     if not emails:
         raise ExposeError(
             "CREW_ALLOWED_EMAILS is empty — refusing to expose with no access "
-            "whitelist. Set CREW_ALLOWED_EMAILS (comma-separated) in the "
-            "instance's instance.env or in instances/_shared.env."
+            f"whitelist. Set CREW_ALLOWED_EMAILS (comma-separated) in "
+            f"instances/{name}/instance.env."
         )
     return ExposeConfig(
         client_id=shared["CREW_GOOGLE_CLIENT_ID"],
