@@ -324,3 +324,24 @@ def test_remove_skips_unpublish_when_not_exposed(root, calls, monkeypatch):
     monkeypatch.setattr(expose, "unexpose", lambda r, n: unexposed.append(n))
     manager.remove(root, "alice")   # no marker written -> not exposed
     assert unexposed == []
+
+
+def test_create_validates_and_records_credentials(root, calls):
+    _agents_dir(root)
+    (root / "credentials").mkdir()
+    (root / "credentials" / "anthropic.env").write_text("ANTHROPIC_API_KEY=secret\n")
+    manager.create(root, "alice", type="hermes",
+                   creds={"TELEGRAM_BOT_TOKEN": "t"}, credentials=["anthropic"])
+    assert paths.read_meta(root, "alice")["credentials"] == ["anthropic"]
+    compose = paths.compose_path(root, "alice").read_text()
+    assert "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" in compose
+    assert "secret" not in compose
+
+
+def test_create_unknown_credential_rejected(root, calls):
+    _agents_dir(root)
+    from crew.core.errors import CredentialNotFoundError
+    with pytest.raises(CredentialNotFoundError):
+        manager.create(root, "alice", type="hermes",
+                       creds={"TELEGRAM_BOT_TOKEN": "t"}, credentials=["ghost"])
+    assert not paths.instance_dir(root, "alice").exists()

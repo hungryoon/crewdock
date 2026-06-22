@@ -17,6 +17,7 @@ from .models import Instance
 from .ports import find_free_port
 from . import paths
 from . import expose as _expose
+from . import credentials as _credentials
 
 
 def _manifest_path(root: Path, type: str) -> Path:
@@ -72,12 +73,14 @@ def _validate_layers(root: Path, layers: list[str]) -> None:
 
 
 def create(root: Path, name: str, type: str, creds: dict,
-           layers: list[str] | None = None) -> Instance:
+           layers: list[str] | None = None, credentials: list[str] | None = None) -> Instance:
     layers = layers or []
+    credentials = credentials or []
     paths.validate_name(name)
     inst_dir = paths.instance_dir(root, name)
     manifest = load_manifest(_manifest_path(root, type))
     _validate_layers(root, layers)
+    _credentials.validate_credentials(root, credentials)
 
     with paths.lock(root):
         if inst_dir.exists():
@@ -91,12 +94,15 @@ def create(root: Path, name: str, type: str, creds: dict,
                     shutil.copy(tmpl, inst_dir / "data" / "config.yaml")
             _write_instance_env(root, name, port, creds,
                                 host_user_env=manifest.host_user_env)
+            cred_keys = _credentials.credential_keys(root, credentials)
             paths.compose_path(root, name).write_text(
-                render_compose(manifest, name, port, layers=layers)
+                render_compose(manifest, name, port, layers=layers,
+                               credential_keys=cred_keys)
             )
             paths.write_meta(root, name, {
                 "type": type, "port": port, "image": manifest.image,
-                "layers": layers, "created_at": _stamp(),
+                "layers": layers, "credentials": credentials,
+                "created_at": _stamp(),
             })
             run_compose(
                 paths.project_name(name),
