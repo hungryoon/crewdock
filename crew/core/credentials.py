@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from crew.core import paths
-from crew.core.creds import parse_env_file
-from crew.core.errors import CredentialNotFoundError
+from . import paths
+from .creds import parse_env_file
+from .errors import CredentialNotFoundError
 
 
 def list_credentials(root: Path) -> list[str]:
