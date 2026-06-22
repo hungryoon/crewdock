@@ -1,3 +1,5 @@
+import stat
+
 import pytest
 
 from crew.core import manager, paths
@@ -488,3 +490,28 @@ def test_status_reports_previous_image(root, calls, monkeypatch):
     inst = manager.status(root, "alice")
     assert inst.image == "nousresearch/hermes-agent@sha256:v2"
     assert inst.previous_image == "nousresearch/hermes-agent:latest"
+
+
+def test_write_meta_atomic_no_temp_left(root):
+    from crew.core import paths
+    d = paths.instance_dir(root, "alice"); d.mkdir(parents=True)
+    paths.write_meta(root, "alice", {"image": "x:1"})
+    assert paths.read_meta(root, "alice") == {"image": "x:1"}
+    # no leftover temp files
+    assert not [p for p in d.iterdir() if p.name.endswith(".tmp")]
+
+
+def test_instance_env_is_0600(root, calls):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    mode = stat.S_IMODE(paths.instance_env_path(root, "alice").stat().st_mode)
+    assert mode == 0o600
+
+
+def test_create_failure_cleans_up_instance_dir(root, monkeypatch):
+    _agents_dir(root)
+    def boom(*a, **k): raise RuntimeError("up failed")
+    monkeypatch.setattr(manager, "run_compose", boom)
+    with pytest.raises(RuntimeError):
+        manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    assert not paths.instance_dir(root, "alice").exists()

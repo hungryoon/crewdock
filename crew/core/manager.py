@@ -67,6 +67,7 @@ def _write_instance_env(root: Path, name: str, port: int, creds: dict,
     lines.append("# Uncomment + set Google accounts (comma-separated) to allow `crew expose`:")
     lines.append("# CREW_ALLOWED_EMAILS=you@example.com")
     paths.instance_env_path(root, name).write_text("\n".join(lines) + "\n")
+    paths.instance_env_path(root, name).chmod(0o600)
 
 
 def _validate_layers(root: Path, layers: list[str]) -> None:
@@ -92,6 +93,7 @@ def create(root: Path, name: str, type: str, creds: dict,
         port = find_free_port(reserved=_reserved_ports(root))
         try:
             (inst_dir / "data").mkdir(parents=True)
+            inst_dir.chmod(0o700)
             if manifest.seed_config:
                 tmpl = root / "instances" / "_template" / "config.yaml"
                 if tmpl.exists():
@@ -115,7 +117,10 @@ def create(root: Path, name: str, type: str, creds: dict,
                 ["up", "-d"],
             )
         except Exception:
-            shutil.rmtree(inst_dir, ignore_errors=True)
+            try:
+                _purge_dir(inst_dir)
+            except Exception:
+                pass
             raise
 
     return Instance(name=name, type=type, port=port, image=manifest.image,
@@ -347,6 +352,8 @@ def _repin(root: Path, name: str, meta: dict, manifest, target: str,
         run_compose(project, compose_file, env_files, ["pull"])
         run_compose(project, compose_file, env_files, ["up", "-d"])
     except Exception:
+        # Restore meta FIRST (intentional: meta is the source of truth;
+        # compose is regenerated from meta on the next update).
         paths.write_meta(root, name, old_meta)
-        paths.compose_path(root, name).write_text(old_compose)
+        paths.atomic_write_text(paths.compose_path(root, name), old_compose)
         raise

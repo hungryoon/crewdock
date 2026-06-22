@@ -1,5 +1,7 @@
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 
 from filelock import FileLock
@@ -72,9 +74,25 @@ def read_meta(root: Path, name: str) -> dict:
     return json.loads(path.read_text())
 
 
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write text durably: write to a temp file in the same dir, then os.replace.
+    A crash mid-write leaves the original intact rather than a truncated file."""
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix="." + path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def write_meta(root: Path, name: str, meta: dict) -> None:
     path = instance_dir(root, name) / "meta.json"
-    path.write_text(json.dumps(meta, indent=2))
+    atomic_write_text(path, json.dumps(meta, indent=2))
 
 
 def read_port(root: Path, name: str) -> int | None:
