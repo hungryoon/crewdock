@@ -38,6 +38,10 @@ def _env_files(root: Path, name: str) -> list[Path]:
     shared = paths.shared_env_path(root)
     if shared.exists():
         files.append(shared)
+    creds = paths.read_meta(root, name).get("credentials", [])
+    for path in _credentials.credential_files(root, creds):
+        if path.exists():
+            files.append(path)
     files.append(paths.instance_env_path(root, name))
     return files
 
@@ -279,8 +283,10 @@ def update(root: Path, name: str, backup: bool = False) -> None:
     meta = paths.read_meta(root, name)
     manifest = load_manifest(_manifest_path(root, meta.get("type", "")))
     port = paths.read_port(root, name) or 0
+    cred_keys = _credentials.credential_keys(root, meta.get("credentials", []))
     paths.compose_path(root, name).write_text(
-        render_compose(manifest, name, port, layers=meta.get("layers", []))
+        render_compose(manifest, name, port, layers=meta.get("layers", []),
+                       credential_keys=cred_keys)
     )
     project = paths.project_name(name)
     compose_file = paths.compose_path(root, name)

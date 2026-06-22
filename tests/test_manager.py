@@ -345,3 +345,28 @@ def test_create_unknown_credential_rejected(root, calls):
         manager.create(root, "alice", type="hermes",
                        creds={"TELEGRAM_BOT_TOKEN": "t"}, credentials=["ghost"])
     assert not paths.instance_dir(root, "alice").exists()
+
+
+def test_env_files_order_shared_then_credentials_then_instance(root, calls):
+    _agents_dir(root)
+    (root / "instances" / "_shared.env").write_text("HERMES_UID=501\n")
+    (root / "credentials").mkdir()
+    (root / "credentials" / "anthropic.env").write_text("ANTHROPIC_API_KEY=secret\n")
+    manager.create(root, "alice", type="hermes",
+                   creds={"TELEGRAM_BOT_TOKEN": "t"}, credentials=["anthropic"])
+    files = manager._env_files(root, "alice")
+    assert files[0] == paths.shared_env_path(root)
+    assert files[1] == paths.credential_path(root, "anthropic")
+    assert files[-1] == paths.instance_env_path(root, "alice")
+
+
+def test_update_reapplies_credentials(root, calls):
+    _agents_dir(root)
+    (root / "credentials").mkdir()
+    (root / "credentials" / "anthropic.env").write_text("ANTHROPIC_API_KEY=secret\n")
+    manager.create(root, "alice", type="hermes",
+                   creds={"TELEGRAM_BOT_TOKEN": "t"}, credentials=["anthropic"])
+    paths.compose_path(root, "alice").write_text("stale\n")
+    manager.update(root, "alice")
+    compose = paths.compose_path(root, "alice").read_text()
+    assert "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" in compose
