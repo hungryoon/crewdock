@@ -66,7 +66,10 @@ async def _proxy_http(request, port, tail, prefix) -> web.StreamResponse:
                 await resp.write_eof()
                 return resp
     except (aiohttp.ClientError, asyncio.TimeoutError):
-        raise web.HTTPBadGateway()
+        raise web.HTTPBadGateway(
+            text='<!doctype html><p>upstream unavailable — '
+                 '<a href="/">back to instances</a></p>',
+            content_type="text/html")
 
 
 async def _proxy_ws(request, port, tail, prefix) -> web.StreamResponse:

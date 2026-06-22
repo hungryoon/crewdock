@@ -33,12 +33,6 @@ def test_tailnet_dns_name_strips_trailing_dot():
         == "box.tail1234.ts.net"
 
 
-def test_redirect_and_dashboard_url():
-    assert expose.redirect_url("box.ts.net", 9120) \
-        == "https://box.ts.net:9120/oauth2/callback"
-    assert expose.dashboard_url("box.ts.net", 9120) == "https://box.ts.net:9120/"
-
-
 def test_check_tailscale_up_passes_when_running():
     expose.check_tailscale_up(
         run_capture=lambda argv: '{"BackendState":"Running"}')  # no raise

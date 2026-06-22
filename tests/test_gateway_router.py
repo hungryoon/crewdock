@@ -109,3 +109,5 @@ async def test_upstream_down_returns_502(aiohttp_client, monkeypatch):
     client = await aiohttp_client(router.build_app())
     resp = await client.get("/i/alice/x", headers={"X-Forwarded-Email": "a@x.com"})
     assert resp.status == 502
+    body = await resp.text()
+    assert 'href="/"' in body

@@ -86,3 +86,26 @@ def test_gateway_up_refuses_with_no_published(tmp_path, monkeypatch):
         lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
     with pytest.raises(ExposeError, match="no published"):
         gateway.gateway_up(tmp_path)
+
+
+def test_gateway_up_rolls_back_on_run_failure(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    _published(tmp_path)
+    monkeypatch.setattr(gateway, "_run_capture",
+        lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
+    monkeypatch.setattr(gateway, "_repo_root", lambda: "/repo")
+    quiet = []
+    monkeypatch.setattr(gateway, "_run_quiet", lambda argv: quiet.append(argv))
+
+    def fake_run(argv):
+        if argv[:2] == ["tailscale", "serve"]:
+            raise ExposeError("serve boom")
+    monkeypatch.setattr(gateway, "_run", fake_run)
+
+    with pytest.raises(ExposeError):
+        gateway.gateway_up(tmp_path)
+    # both containers removed during rollback
+    assert any(q[:3] == ["docker", "rm", "-f"] and q[3] == gateway.ROUTER_CONTAINER
+               for q in quiet)
+    assert any(q[:3] == ["docker", "rm", "-f"] and q[3] == gateway.GATEWAY_AUTH_CONTAINER
+               for q in quiet)

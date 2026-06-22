@@ -47,10 +47,6 @@ def instance_env_path(root: Path, name: str) -> Path:
     return instance_dir(root, name) / "instance.env"
 
 
-def expose_dir(root: Path, name: str) -> Path:
-    return instance_dir(root, name) / "expose"
-
-
 def compose_path(root: Path, name: str) -> Path:
     return instance_dir(root, name) / "docker-compose.yml"
 

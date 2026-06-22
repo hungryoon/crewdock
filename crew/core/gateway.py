@@ -83,17 +83,23 @@ def gateway_up(root: Path) -> dict:
     env_file.chmod(0o600)
 
     _run(router_build_argv(_repo_root()))
-    _run_quiet(["docker", "rm", "-f", ROUTER_CONTAINER])
-    _run(router_run_argv(str(root.resolve()), ROUTER_PORT))
-    _run_quiet(["docker", "rm", "-f", GATEWAY_AUTH_CONTAINER])
-    _run([
-        "docker", "run", "-d", "--name", GATEWAY_AUTH_CONTAINER,
-        "--network", "host", "--restart", "unless-stopped",
-        "--env-file", str(env_file.resolve()),
-        "-v", f"{emails_file.resolve()}:/etc/oauth2-proxy/emails.txt:ro",
-        OAUTH2_IMAGE,
-    ])
-    _run(serve_argv(GATEWAY_HTTPS_PORT, GATEWAY_AUTH_PORT))
+    try:
+        _run_quiet(["docker", "rm", "-f", ROUTER_CONTAINER])
+        _run(router_run_argv(str(root.resolve()), ROUTER_PORT))
+        _run_quiet(["docker", "rm", "-f", GATEWAY_AUTH_CONTAINER])
+        _run([
+            "docker", "run", "-d", "--name", GATEWAY_AUTH_CONTAINER,
+            "--network", "host", "--restart", "unless-stopped",
+            "--env-file", str(env_file.resolve()),
+            "-v", f"{emails_file.resolve()}:/etc/oauth2-proxy/emails.txt:ro",
+            OAUTH2_IMAGE,
+        ])
+        _run(serve_argv(GATEWAY_HTTPS_PORT, GATEWAY_AUTH_PORT))
+    except ExposeError:
+        _run_quiet(serve_off_argv(GATEWAY_HTTPS_PORT))
+        _run_quiet(["docker", "rm", "-f", GATEWAY_AUTH_CONTAINER])
+        _run_quiet(["docker", "rm", "-f", ROUTER_CONTAINER])
+        raise
     return {"url": f"https://{host}/", "redirect_uri": redirect}
 
 

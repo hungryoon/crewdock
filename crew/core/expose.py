@@ -69,14 +69,6 @@ def tailnet_dns_name(run_capture=_run_capture) -> str:
     return data["Self"]["DNSName"].rstrip(".")
 
 
-def redirect_url(host: str, https_port: int) -> str:
-    return f"https://{host}:{https_port}/oauth2/callback"
-
-
-def dashboard_url(host: str, https_port: int) -> str:
-    return f"https://{host}:{https_port}/"
-
-
 def check_tailscale_up(run_capture=_run_capture) -> None:
     data = json.loads(run_capture(["tailscale", "status", "--json"]))
     if data.get("BackendState") != "Running":
