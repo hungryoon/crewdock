@@ -124,3 +124,19 @@ def test_render_host_mode(tmp_path):
     assert "../../layers/knowledge:/opt/shared/knowledge:ro" in svc["volumes"]
     # allocated port literal never baked
     assert "9123" not in text
+
+
+def test_render_compose_includes_credential_keys_as_passthrough(manifest_file):
+    m = load_manifest(manifest_file)
+    out = render_compose(m, "alice", 9120,
+                         credential_keys=["ANTHROPIC_API_KEY", "OPENAI_API_KEY"])
+    assert "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" in out
+    assert "OPENAI_API_KEY=${OPENAI_API_KEY}" in out
+
+
+def test_render_compose_credential_keys_dedupe_against_passthrough(manifest_file):
+    m = load_manifest(manifest_file)
+    # a key already in manifest.passthrough_env must not be rendered twice
+    dup = m.passthrough_env[0]
+    out = render_compose(m, "alice", 9120, credential_keys=[dup])
+    assert out.count(f"{dup}=${{{dup}}}") == 1

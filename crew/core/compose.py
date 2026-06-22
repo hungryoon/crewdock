@@ -14,6 +14,7 @@ def render_compose(
     name: str,
     port: int,
     layers: list[str] | None = None,
+    credential_keys: list[str] | None = None,
 ) -> str:
     """Render docker-compose.yml text. `port` is recorded by the caller into
     instance.env as CREW_PORT; the compose file references it via ${CREW_PORT}.
@@ -31,6 +32,10 @@ def render_compose(
         dashboard_port_value = "${CREW_PORT}"
     else:
         dashboard_port_value = str(manifest.dashboard_port)
+    passthrough = list(manifest.passthrough_env)
+    for key in (credential_keys or []):
+        if key not in passthrough:
+            passthrough.append(key)
     return template.render(
         image=manifest.image,
         container_name=project_name(name),
@@ -43,7 +48,7 @@ def render_compose(
         dashboard_port_env=manifest.dashboard_port_env,
         dashboard_port_value=dashboard_port_value,
         static_env=manifest.static_env,
-        passthrough_env=manifest.passthrough_env,
+        passthrough_env=passthrough,
         shm_size=manifest.shm_size,
         mem_limit=manifest.mem_limit,
         cpus=manifest.cpus,
