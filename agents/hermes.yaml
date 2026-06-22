@@ -1,6 +1,10 @@
 # Hermes runtime — official NousResearch image.
+# Pinned to the latest tagged release (stable), by digest for reproducibility.
+# To bump: pick a newer vYYYY.M.D tag from Docker Hub, resolve its digest, repin here.
+# This is only the DEFAULT for new instances; existing instances keep their own
+# pin (see `crew update --image/--rollback/--to-default`).
 type: hermes
-image: nousresearch/hermes-agent:latest
+image: nousresearch/hermes-agent:v2026.6.19@sha256:9f367c7756ef087661a361536a89f438d57a122b958dc23d82d456b1433e6e9e
 run_command: ["gateway", "run"]
 data_mount: /opt/data
 layers_mount: /opt/shared
