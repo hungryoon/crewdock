@@ -1,4 +1,22 @@
 from crew.core import gateway
+from crew.core.expose import ExposeConfig
+
+
+def test_render_gateway_oauth2_env():
+    cfg = ExposeConfig("cid", "sec", "c" * 32, [])
+    txt = gateway.render_gateway_oauth2_env(
+        cfg, authport=9401, routerport=9400,
+        redirect="https://h.ts.net/oauth2/callback")
+    assert "OAUTH2_PROXY_PROVIDER=google" in txt
+    assert "OAUTH2_PROXY_CLIENT_ID=cid" in txt
+    assert "OAUTH2_PROXY_REDIRECT_URL=https://h.ts.net/oauth2/callback" in txt
+    assert "OAUTH2_PROXY_UPSTREAMS=http://127.0.0.1:9400/" in txt
+    assert "OAUTH2_PROXY_HTTP_ADDRESS=127.0.0.1:9401" in txt
+    assert "OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE=/etc/oauth2-proxy/emails.txt" in txt
+    assert "OAUTH2_PROXY_PASS_USER_HEADERS=true" in txt
+    assert "OAUTH2_PROXY_REVERSE_PROXY=true" in txt
+    assert "OAUTH2_PROXY_PROXY_WEBSOCKETS=true" in txt
+    assert "OAUTH2_PROXY_EMAIL_DOMAINS" not in txt
 
 
 def test_router_image_and_build_argv():

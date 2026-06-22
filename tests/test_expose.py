@@ -239,3 +239,18 @@ def test_is_exposed_true_when_container_present(monkeypatch):
 def test_is_exposed_false_when_no_container(monkeypatch):
     monkeypatch.setattr(expose, "_run_capture", lambda argv: "")
     assert expose.is_exposed("alice") is False
+
+
+def test_load_shared_oauth_reads_client_secret_cookie(tmp_path):
+    _setup_shared(tmp_path,
+        "CREW_GOOGLE_CLIENT_ID=cid\nCREW_GOOGLE_CLIENT_SECRET=sec\n"
+        "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n")
+    cfg = expose.load_shared_oauth(tmp_path)
+    assert (cfg.client_id, cfg.client_secret) == ("cid", "sec")
+    assert cfg.allowed_emails == []
+
+
+def test_load_shared_oauth_missing_raises(tmp_path):
+    _setup_shared(tmp_path, "CREW_GOOGLE_CLIENT_ID=cid\n")
+    with pytest.raises(ExposeError, match="CREW_GOOGLE_CLIENT_SECRET"):
+        expose.load_shared_oauth(tmp_path)
