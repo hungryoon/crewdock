@@ -7,7 +7,8 @@ import typer
 
 from .core import manager
 from .core import expose as expose_mod
-from .core.errors import CrewError, ExposeError
+from .core import gateway as gateway_mod
+from .core.errors import CrewError
 
 app = typer.Typer(help="Host a crew of isolated AI-assistant agent containers.")
 
@@ -54,32 +55,50 @@ def rm(name: str, purge: bool = typer.Option(False, help="also delete data/")):
     typer.echo(f"removed {name}" + (" (purged)" if purge else " (data kept)"))
 
 
-@app.command()
-def expose(name: str):
-    """Expose an instance's dashboard over Tailscale behind Google SSO."""
+gateway_app = typer.Typer(help="Single login gateway for all exposed dashboards.")
+app.add_typer(gateway_app, name="gateway")
+
+
+@gateway_app.command("up")
+def gateway_up():
+    """Start the login gateway (one URL for all published instances)."""
     try:
-        inst = manager.status(_root(), name)
-        if inst.state != "running":
-            raise ExposeError(
-                f"{name} is not running (state: {inst.state}) — "
-                f"start it first with: crew start {name}")
-        info = expose_mod.expose(_root(), name)
+        info = gateway_mod.gateway_up(_root())
     except CrewError as exc:
         _fail(exc)
-    typer.echo(f"exposed {name} -> {info['url']}")
-    typer.echo("  if this instance is new, add this redirect URI to your "
-               "Google OAuth client:")
+    typer.echo(f"gateway up -> {info['url']}")
+    typer.echo("  add this redirect URI to your Google OAuth client (once):")
     typer.echo(f"    {info['redirect_uri']}")
+
+
+@gateway_app.command("down")
+def gateway_down():
+    """Stop the login gateway."""
+    try:
+        gateway_mod.gateway_down(_root())
+    except CrewError as exc:
+        _fail(exc)
+    typer.echo("gateway down")
+
+
+@app.command()
+def expose(name: str):
+    """Publish an instance to the gateway."""
+    try:
+        expose_mod.expose(_root(), name)
+    except CrewError as exc:
+        _fail(exc)
+    typer.echo(f"published {name} to the gateway")
 
 
 @app.command()
 def unexpose(name: str):
-    """Stop exposing an instance's dashboard."""
+    """Unpublish an instance from the gateway."""
     try:
         expose_mod.unexpose(_root(), name)
     except CrewError as exc:
         _fail(exc)
-    typer.echo(f"unexposed {name}")
+    typer.echo(f"unpublished {name}")
 
 
 @app.command(name="list")

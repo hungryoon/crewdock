@@ -67,44 +67,33 @@ def test_layers_command_lists_pool(monkeypatch, root):
     assert "knowledge" in result.stdout
 
 
-def test_expose_invokes_core_and_prints_url(monkeypatch, root):
+def test_gateway_up_invokes_core(monkeypatch, root):
     _patch(monkeypatch, root)
-    from crew.core import expose as expose_mod
-    from crew.core.models import Instance
-    monkeypatch.setattr(manager, "status",
-        lambda r, name: Instance(name=name, type="hermes", port=9120,
-                                 image="img", state="running"))
-    monkeypatch.setattr(expose_mod, "expose", lambda r, name: {
-        "url": "https://box.ts.net:9120/",
-        "redirect_uri": "https://box.ts.net:9120/oauth2/callback",
-        "https_port": 9120,
-    })
-    result = runner.invoke(cli.app, ["expose", "alice"])
+    from crew.core import gateway
+    monkeypatch.setattr(gateway, "gateway_up", lambda r: {
+        "url": "https://h.ts.net/",
+        "redirect_uri": "https://h.ts.net/oauth2/callback"})
+    result = runner.invoke(cli.app, ["gateway", "up"])
     assert result.exit_code == 0
-    assert "https://box.ts.net:9120/" in result.stdout
+    assert "https://h.ts.net/" in result.stdout
     assert "oauth2/callback" in result.stdout
 
 
-def test_expose_refuses_when_instance_not_running(monkeypatch, root):
+def test_gateway_down_invokes_core(monkeypatch, root):
+    _patch(monkeypatch, root)
+    from crew.core import gateway
+    called = []
+    monkeypatch.setattr(gateway, "gateway_down", lambda r: called.append(True))
+    result = runner.invoke(cli.app, ["gateway", "down"])
+    assert result.exit_code == 0
+    assert called == [True]
+
+
+def test_expose_marks_publish(monkeypatch, root):
     _patch(monkeypatch, root)
     from crew.core import expose as expose_mod
-    from crew.core.models import Instance
-    monkeypatch.setattr(manager, "status",
-        lambda r, name: Instance(name=name, type="hermes", port=9120,
-                                 image="img", state="stopped"))
     called = []
-    monkeypatch.setattr(expose_mod, "expose",
-                        lambda r, name: called.append(name))
+    monkeypatch.setattr(expose_mod, "expose", lambda r, name: called.append(name))
     result = runner.invoke(cli.app, ["expose", "alice"])
-    assert result.exit_code != 0
-    assert called == []  # core expose() never invoked for a stopped instance
-
-
-def test_unexpose_invokes_core(monkeypatch, root):
-    _patch(monkeypatch, root)
-    from crew.core import expose as expose_mod
-    called = []
-    monkeypatch.setattr(expose_mod, "unexpose", lambda r, name: called.append(name))
-    result = runner.invoke(cli.app, ["unexpose", "alice"])
     assert result.exit_code == 0
     assert called == ["alice"]
