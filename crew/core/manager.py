@@ -119,7 +119,7 @@ def _require_exists(root: Path, name: str) -> None:
 
 def remove(root: Path, name: str, purge: bool = False) -> None:
     _require_exists(root, name)
-    if _expose.is_exposed(name):
+    if _expose.is_exposed_for(root, name):
         _expose.unexpose(root, name)
     run_compose(
         paths.project_name(name),

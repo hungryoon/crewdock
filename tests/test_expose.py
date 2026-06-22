@@ -19,49 +19,6 @@ def _shared_oauth(root):
         "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n")
 
 
-def test_load_expose_config_reads_shared_oauth_and_instance_emails(tmp_path):
-    _shared_oauth(tmp_path)
-    d = tmp_path / "instances" / "alice"
-    d.mkdir(parents=True)
-    (d / "instance.env").write_text("CREW_ALLOWED_EMAILS=a@x.com, b@y.com\n")
-    cfg = expose.load_expose_config(tmp_path, "alice")
-    assert cfg.client_id == "cid"
-    assert cfg.client_secret == "sec"
-    assert cfg.cookie_secret == "a" * 32
-    assert cfg.allowed_emails == ["a@x.com", "b@y.com"]
-
-
-def test_load_expose_config_missing_secret_raises(tmp_path):
-    _setup_shared(tmp_path, "CREW_GOOGLE_CLIENT_ID=cid\n")
-    with pytest.raises(ExposeError, match="CREW_GOOGLE_CLIENT_SECRET"):
-        expose.load_expose_config(tmp_path, "alice")
-
-
-def test_load_expose_config_raises_without_instance_emails(tmp_path):
-    # fail closed: no per-instance whitelist -> refuse to expose. The whitelist
-    # is NEVER inherited from _shared.env.
-    _shared_oauth(tmp_path)
-    d = tmp_path / "instances" / "alice"
-    d.mkdir(parents=True)
-    (d / "instance.env").write_text("CREW_PORT=9120\n")  # no emails
-    with pytest.raises(ExposeError, match="CREW_ALLOWED_EMAILS"):
-        expose.load_expose_config(tmp_path, "alice")
-
-
-def test_load_expose_config_ignores_shared_emails(tmp_path):
-    # Even if someone puts CREW_ALLOWED_EMAILS in _shared.env, it is NOT used —
-    # only the per-instance value counts (no shared inheritance).
-    _setup_shared(tmp_path,
-        "CREW_GOOGLE_CLIENT_ID=cid\n"
-        "CREW_GOOGLE_CLIENT_SECRET=sec\n"
-        "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n"
-        "CREW_ALLOWED_EMAILS=shared@x.com\n")
-    d = tmp_path / "instances" / "alice"
-    d.mkdir(parents=True)
-    (d / "instance.env").write_text("CREW_ALLOWED_EMAILS=inst@y.com\n")
-    cfg = expose.load_expose_config(tmp_path, "alice")
-    assert cfg.allowed_emails == ["inst@y.com"]  # shared@x.com ignored
-
 
 def test_serve_argv_on_and_off():
     assert expose.serve_argv(9120, 9300) == [

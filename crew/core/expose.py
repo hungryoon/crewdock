@@ -43,38 +43,6 @@ def load_shared_oauth(root: Path) -> ExposeConfig:
     )
 
 
-def load_expose_config(root: Path, name: str) -> ExposeConfig:
-    shared = parse_env_file(paths.shared_env_path(root))
-    missing = [k for k in _REQUIRED_SHARED if not shared.get(k)]
-    if missing:
-        raise ExposeError(
-            "missing Google OAuth config in instances/_shared.env: "
-            + ", ".join(missing)
-            + "\nadd CREW_GOOGLE_CLIENT_ID, CREW_GOOGLE_CLIENT_SECRET, and "
-              "CREW_OAUTH_COOKIE_SECRET."
-        )
-    # The Google client/secret/cookie are shared, but the access whitelist is
-    # per-instance ONLY: read from the instance's instance.env, never from
-    # _shared.env — so a new instance can't silently inherit another's allow-list.
-    inst = parse_env_file(paths.instance_env_path(root, name))
-    emails = [
-        e.strip()
-        for e in inst.get("CREW_ALLOWED_EMAILS", "").split(",")
-        if e.strip()
-    ]
-    if not emails:
-        raise ExposeError(
-            "CREW_ALLOWED_EMAILS is empty — refusing to expose with no access "
-            f"whitelist. Set CREW_ALLOWED_EMAILS (comma-separated) in "
-            f"instances/{name}/instance.env."
-        )
-    return ExposeConfig(
-        client_id=shared["CREW_GOOGLE_CLIENT_ID"],
-        client_secret=shared["CREW_GOOGLE_CLIENT_SECRET"],
-        cookie_secret=shared["CREW_OAUTH_COOKIE_SECRET"],
-        allowed_emails=emails,
-    )
-
 
 def serve_argv(https_port: int, authport: int) -> list[str]:
     return ["tailscale", "serve", "--bg", f"--https={https_port}",

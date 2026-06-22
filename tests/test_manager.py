@@ -305,23 +305,22 @@ def test_shell_argv_uses_exec(root, calls):
     assert "agent" in argv
 
 
-def test_remove_unexposes_if_exposed(root, calls, monkeypatch):
+def test_remove_unpublishes_if_exposed(root, calls, monkeypatch):
     _agents_dir(root)
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     import crew.core.expose as expose
-    monkeypatch.setattr(expose, "is_exposed", lambda name: True)
+    paths.exposed_marker_path(root, "alice").write_text("")
     unexposed = []
     monkeypatch.setattr(expose, "unexpose", lambda r, n: unexposed.append(n))
     manager.remove(root, "alice")
     assert unexposed == ["alice"]
 
 
-def test_remove_skips_unexpose_when_not_exposed(root, calls, monkeypatch):
+def test_remove_skips_unpublish_when_not_exposed(root, calls, monkeypatch):
     _agents_dir(root)
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     import crew.core.expose as expose
-    monkeypatch.setattr(expose, "is_exposed", lambda name: False)
     unexposed = []
     monkeypatch.setattr(expose, "unexpose", lambda r, n: unexposed.append(n))
-    manager.remove(root, "alice")
+    manager.remove(root, "alice")   # no marker written -> not exposed
     assert unexposed == []
