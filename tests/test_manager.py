@@ -430,3 +430,32 @@ def test_update_image_restores_on_pull_failure(root, monkeypatch):
     assert meta["image"] == "nousresearch/hermes-agent:latest"
     assert "previous_image" not in meta
     assert paths.compose_path(root, "alice").read_text() == old_compose
+
+
+def test_update_rollback_swaps_current_and_previous(root, calls):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    manager.update(root, "alice", image="nousresearch/hermes-agent@sha256:v2")
+    manager.update(root, "alice", rollback=True)
+    meta = paths.read_meta(root, "alice")
+    assert meta["image"] == "nousresearch/hermes-agent:latest"
+    assert meta["previous_image"] == "nousresearch/hermes-agent@sha256:v2"
+
+
+def test_update_rollback_twice_returns_to_original(root, calls):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    manager.update(root, "alice", image="nousresearch/hermes-agent@sha256:v2")
+    manager.update(root, "alice", rollback=True)
+    manager.update(root, "alice", rollback=True)
+    meta = paths.read_meta(root, "alice")
+    assert meta["image"] == "nousresearch/hermes-agent@sha256:v2"
+
+
+def test_update_rollback_without_previous_errors(root, calls):
+    import pytest
+    from crew.core.errors import CrewError
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    with pytest.raises(CrewError, match="no previous image"):
+        manager.update(root, "alice", rollback=True)

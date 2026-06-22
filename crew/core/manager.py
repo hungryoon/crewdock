@@ -282,11 +282,11 @@ def _render_instance(root: Path, name: str, meta: dict, manifest, image: str) ->
 
 
 def update(root: Path, name: str, backup: bool = False,
-           image: str | None = None) -> None:
+           image: str | None = None, rollback: bool = False) -> None:
     """Re-render compose, pull the instance's image, and recreate.
     Bare (no image) keeps the pin; image=<ref> repins atomically
-    (restores meta+compose if pull/up fails). With backup=True, snapshot
-    data/ first."""
+    (restores meta+compose if pull/up fails). rollback=True swaps
+    current/previous. With backup=True, snapshot data/ first."""
     _require_exists(root, name)
     if backup:
         src = paths.instance_dir(root, name) / "data"
@@ -298,6 +298,13 @@ def update(root: Path, name: str, backup: bool = False,
     project = paths.project_name(name)
     compose_file = paths.compose_path(root, name)
     env_files = _env_files(root, name)
+
+    if rollback:
+        prev = meta.get("previous_image")
+        if not prev:
+            raise CrewError("no previous image to roll back to")
+        _repin(root, name, meta, manifest, target=prev, new_previous=current)
+        return
 
     if image is None:
         _render_instance(root, name, meta, manifest, current)
