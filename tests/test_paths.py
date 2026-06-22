@@ -53,3 +53,10 @@ def test_gateway_dir_and_exposed_marker(tmp_path):
     assert paths.gateway_dir(tmp_path) == tmp_path / "instances" / "_gateway"
     assert paths.exposed_marker_path(tmp_path, "alice") == \
         tmp_path / "instances" / "alice" / "exposed"
+
+
+def test_credentials_dir_and_path(tmp_path):
+    from crew.core import paths
+    assert paths.credentials_dir(tmp_path) == tmp_path / "credentials"
+    assert paths.credential_path(tmp_path, "anthropic") == \
+        tmp_path / "credentials" / "anthropic.env"

@@ -28,3 +28,7 @@ class LayerNotFoundError(CrewError):
 
 class ExposeError(CrewError):
     """Exposing an instance's dashboard (Tailscale / oauth2-proxy) failed."""
+
+
+class CredentialNotFoundError(CrewError):
+    """A requested --credential bundle is not in the credentials/ pool."""

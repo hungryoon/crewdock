@@ -92,3 +92,11 @@ def list_layers(root: Path) -> list[str]:
     if not d.exists():
         return []
     return sorted(p.name for p in d.iterdir() if p.is_dir())
+
+
+def credentials_dir(root: Path) -> Path:
+    return root / "credentials"
+
+
+def credential_path(root: Path, name: str) -> Path:
+    return credentials_dir(root) / f"{name}.env"
