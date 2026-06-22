@@ -370,3 +370,13 @@ def test_update_reapplies_credentials(root, calls):
     manager.update(root, "alice")
     compose = paths.compose_path(root, "alice").read_text()
     assert "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" in compose
+
+
+def test_create_records_image_and_no_previous(root, calls):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    meta = paths.read_meta(root, "alice")
+    assert meta["image"] == "nousresearch/hermes-agent:latest"
+    assert "previous_image" not in meta
+    compose = paths.compose_path(root, "alice").read_text()
+    assert "image: nousresearch/hermes-agent:latest" in compose

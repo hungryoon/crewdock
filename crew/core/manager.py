@@ -101,7 +101,7 @@ def create(root: Path, name: str, type: str, creds: dict,
             cred_keys = _credentials.credential_keys(root, credentials)
             paths.compose_path(root, name).write_text(
                 render_compose(manifest, name, port, layers=layers,
-                               credential_keys=cred_keys)
+                               credential_keys=cred_keys, image=manifest.image)
             )
             paths.write_meta(root, name, {
                 "type": type, "port": port, "image": manifest.image,
