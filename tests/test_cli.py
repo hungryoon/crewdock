@@ -128,3 +128,22 @@ def test_credentials_command_lists_names_and_keys(monkeypatch, root):
     assert "anthropic" in result.stdout
     assert "ANTHROPIC_API_KEY" in result.stdout
     assert "secret" not in result.stdout
+
+
+def test_cli_update_image_calls_manager(monkeypatch, tmp_path):
+    from crew import cli
+    captured = {}
+
+    def fake_update(root, name, backup=False, image=None,
+                    rollback=False, to_default=False):
+        captured.update(name=name, image=image, rollback=rollback,
+                        to_default=to_default)
+
+    monkeypatch.setattr(cli.manager, "update", fake_update)
+    monkeypatch.setattr(cli, "_root", lambda: tmp_path)
+    result = runner.invoke(
+        cli.app, ["update", "alice", "--image",
+                  "nousresearch/hermes-agent@sha256:x"])
+    assert result.exit_code == 0
+    assert captured["image"] == "nousresearch/hermes-agent@sha256:x"
+    assert captured["rollback"] is False

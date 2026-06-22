@@ -469,3 +469,12 @@ def test_update_to_default_repins_to_manifest(root, calls):
     meta = paths.read_meta(root, "alice")
     assert meta["image"] == "nousresearch/hermes-agent:latest"
     assert meta["previous_image"] == "nousresearch/hermes-agent@sha256:old"
+
+
+def test_update_rejects_combined_version_flags(root, calls):
+    import pytest
+    from crew.core.errors import CrewError
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    with pytest.raises(CrewError, match="only one of"):
+        manager.update(root, "alice", image="x:1", rollback=True)

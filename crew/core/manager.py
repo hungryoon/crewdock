@@ -290,6 +290,12 @@ def update(root: Path, name: str, backup: bool = False,
     current/previous. to_default=True repins to the manifest image.
     With backup=True, snapshot data/ first."""
     _require_exists(root, name)
+    _exclusive = [f for f, v in (("--image", image is not None),
+                                 ("--rollback", rollback),
+                                 ("--to-default", to_default)) if v]
+    if len(_exclusive) > 1:
+        raise CrewError(
+            "choose only one of --image / --rollback / --to-default")
     if backup:
         src = paths.instance_dir(root, name) / "data"
         dst = paths.instance_dir(root, name) / f"data.bak-{_stamp()}"

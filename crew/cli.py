@@ -176,8 +176,17 @@ def update(
     name: str = typer.Argument(None),
     all: bool = typer.Option(False, "--all", help="update every instance"),
     backup: bool = typer.Option(False, help="snapshot data/ before recreate"),
+    image: str = typer.Option(None, "--image",
+                              help="repin this instance to an image ref (tag or @sha256:...)"),
+    rollback: bool = typer.Option(False, "--rollback",
+                                  help="roll back to the previous image pin"),
+    to_default: bool = typer.Option(False, "--to-default",
+                                    help="repin to the manifest's default image"),
 ):
-    """Pull the pinned image and recreate (re-reads _shared.env)."""
+    """Pull the instance's image and recreate (re-reads _shared.env).
+
+    Bare: refresh config, keep the version. --image/--rollback/--to-default
+    change the pin (mutually exclusive)."""
     root = _root()
     if not all and not name:
         _fail(CrewError("give an instance name or --all"))
@@ -185,7 +194,8 @@ def update(
     failed = []
     for n in targets:
         try:
-            manager.update(root, n, backup=backup)
+            manager.update(root, n, backup=backup, image=image,
+                           rollback=rollback, to_default=to_default)
             typer.echo(f"updated {n}")
         except CrewError as exc:
             typer.secho(f"error updating {n}: {exc}", fg=typer.colors.RED, err=True)
