@@ -8,13 +8,15 @@ dependencies = [
     "jinja2>=3.1",
     "pyyaml>=6.0",
     "filelock>=3.13",
+    "aiohttp>=3.10",
 ]
 
 [project.scripts]
 crew = "crew.cli:app"
+crew-gateway-router = "crew.gateway.router:main"
 
 [dependency-groups]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "pytest-aiohttp>=1.0"]
 
 [build-system]
 requires = ["hatchling"]
@@ -25,3 +27,4 @@ packages = ["crew"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
