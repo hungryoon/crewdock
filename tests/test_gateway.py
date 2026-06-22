@@ -37,3 +37,52 @@ def test_router_run_argv():
     assert "CREW_ROUTER_PORT=9400" in argv
     assert "CREW_ROOT=/crew" in argv
     assert argv[-1] == gateway.ROUTER_IMAGE
+
+
+import pytest
+from crew.core.errors import ExposeError
+
+
+def _full_shared(root):
+    inst = root / "instances"
+    inst.mkdir(exist_ok=True)
+    (inst / "_shared.env").write_text(
+        "CREW_GOOGLE_CLIENT_ID=cid\nCREW_GOOGLE_CLIENT_SECRET=sec\n"
+        "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n")
+
+
+def _published(root, name="alice", port=9120, emails="a@x.com"):
+    d = root / "instances" / name
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "instance.env").write_text(f"CREW_PORT={port}\nCREW_ALLOWED_EMAILS={emails}\n")
+    (d / "exposed").write_text("")
+
+
+def test_gateway_up_builds_runs_and_serves(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    _published(tmp_path)
+    cmds = []
+    monkeypatch.setattr(gateway, "_run", lambda argv: cmds.append(argv))
+    monkeypatch.setattr(gateway, "_run_quiet", lambda argv: cmds.append(("q", argv)))
+    monkeypatch.setattr(gateway, "_run_capture",
+        lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
+    monkeypatch.setattr(gateway, "_repo_root", lambda: "/repo")
+
+    info = gateway.gateway_up(tmp_path)
+
+    assert info["url"] == "https://h.ts.net/"
+    assert info["redirect_uri"] == "https://h.ts.net/oauth2/callback"
+    run = [c for c in cmds if isinstance(c, list)]
+    assert any(c[:2] == ["docker", "build"] for c in run)
+    assert any(c[:2] == ["docker", "run"] for c in run)
+    assert any(c[:2] == ["tailscale", "serve"] for c in run)
+    emails = (tmp_path / "instances" / "_gateway" / "emails.txt").read_text()
+    assert "a@x.com" in emails
+
+
+def test_gateway_up_refuses_with_no_published(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    monkeypatch.setattr(gateway, "_run_capture",
+        lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
+    with pytest.raises(ExposeError, match="no published"):
+        gateway.gateway_up(tmp_path)
