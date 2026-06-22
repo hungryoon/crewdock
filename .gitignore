@@ -11,6 +11,9 @@ instances/.lock
 # keep the seed template
 !instances/_template/
 
+# credential bundles — secrets, never commit
+credentials/
+
 # python
 __pycache__/
 *.pyc
