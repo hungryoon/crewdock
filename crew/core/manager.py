@@ -271,9 +271,20 @@ def _stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _render_instance(root: Path, name: str, meta: dict, manifest, image: str) -> None:
+    """Re-render an instance's compose file using a specific image."""
+    port = paths.read_port(root, name) or 0
+    cred_keys = _credentials.credential_keys(root, meta.get("credentials", []))
+    paths.compose_path(root, name).write_text(
+        render_compose(manifest, name, port, layers=meta.get("layers", []),
+                       credential_keys=cred_keys, image=image)
+    )
+
+
 def update(root: Path, name: str, backup: bool = False) -> None:
-    """Re-render compose (applies layer/manifest changes), pull the pinned image,
-    and recreate. Re-reads both env-files so _shared.env changes propagate.
+    """Re-render compose (applies layer/manifest/cred changes), pull the
+    instance's pinned image, and recreate. Re-reads both env-files so
+    _shared.env changes propagate. Does NOT change the image pin.
     With backup=True, snapshot data/ first."""
     _require_exists(root, name)
     if backup:
@@ -282,12 +293,8 @@ def update(root: Path, name: str, backup: bool = False) -> None:
         shutil.copytree(src, dst)
     meta = paths.read_meta(root, name)
     manifest = load_manifest(_manifest_path(root, meta.get("type", "")))
-    port = paths.read_port(root, name) or 0
-    cred_keys = _credentials.credential_keys(root, meta.get("credentials", []))
-    paths.compose_path(root, name).write_text(
-        render_compose(manifest, name, port, layers=meta.get("layers", []),
-                       credential_keys=cred_keys)
-    )
+    current = meta.get("image", manifest.image)
+    _render_instance(root, name, meta, manifest, current)
     project = paths.project_name(name)
     compose_file = paths.compose_path(root, name)
     env_files = _env_files(root, name)

@@ -380,3 +380,19 @@ def test_create_records_image_and_no_previous(root, calls):
     assert "previous_image" not in meta
     compose = paths.compose_path(root, "alice").read_text()
     assert "image: nousresearch/hermes-agent:latest" in compose
+
+
+def test_bare_update_renders_from_instance_pin(root, calls):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    meta = paths.read_meta(root, "alice")
+    meta["image"] = "nousresearch/hermes-agent@sha256:pinned"
+    paths.write_meta(root, "alice", meta)
+    manager.update(root, "alice")
+    compose = paths.compose_path(root, "alice").read_text()
+    assert "image: nousresearch/hermes-agent@sha256:pinned" in compose
+    meta2 = paths.read_meta(root, "alice")
+    assert meta2["image"] == "nousresearch/hermes-agent@sha256:pinned"
+    assert "previous_image" not in meta2
+    assert ("crew-alice", ["pull"]) in calls
+    assert ("crew-alice", ["up", "-d"]) in calls
