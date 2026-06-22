@@ -80,6 +80,9 @@ def test_render_oauth2_env_contains_all_keys():
     assert "OAUTH2_PROXY_EMAIL_DOMAINS" not in txt
     assert "OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE=/etc/oauth2-proxy/emails.txt" in txt
     assert "OAUTH2_PROXY_REVERSE_PROXY=true" in txt
+    # rewrite Host to the upstream so dashboards that validate the Host header
+    # (e.g. Hermes binds 127.0.0.1 and rejects other hosts) accept the request.
+    assert "OAUTH2_PROXY_PASS_HOST_HEADER=false" in txt
 
 
 def test_auth_container_name():

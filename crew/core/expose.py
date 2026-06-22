@@ -82,6 +82,10 @@ def render_oauth2_env(cfg: ExposeConfig, authport: int, dashport: int,
         "OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE=/etc/oauth2-proxy/emails.txt",
         "OAUTH2_PROXY_REVERSE_PROXY=true",
         "OAUTH2_PROXY_COOKIE_SECURE=true",
+        # Rewrite the Host header to the upstream (127.0.0.1) instead of passing
+        # the public tailnet hostname. Dashboards that validate the Host header
+        # against their bind address (e.g. Hermes) otherwise reject the request.
+        "OAUTH2_PROXY_PASS_HOST_HEADER=false",
     ]
     return "\n".join(lines) + "\n"
 
