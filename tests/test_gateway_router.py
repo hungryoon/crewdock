@@ -79,6 +79,36 @@ async def test_ws_proxy_echo(aiohttp_client, monkeypatch):
     await ws.close()
 
 
+async def test_ws_proxy_rewrites_origin_to_upstream(aiohttp_client, monkeypatch):
+    # Hermes (bound to loopback) rejects WS upgrades whose Origin targets a
+    # foreign host. The router must rewrite Origin to http://127.0.0.1:<port>
+    # (the upstream it dials) so the upgrade is accepted.
+    seen = {}
+
+    async def ws_upstream(request):
+        seen["origin"] = request.headers.get("Origin")
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        async for msg in ws:
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                await ws.send_str("ok")
+        return ws
+    up = web.Application()
+    up.router.add_route("GET", "/{tail:.*}", ws_upstream)
+    up_client = await aiohttp_client(up)
+    port = up_client.server.port
+    monkeypatch.setattr(router, "_published",
+                        lambda: [Published("alice", port, ["a@x.com"])])
+    client = await aiohttp_client(router.build_app())
+    ws = await client.ws_connect("/i/alice/api/pty",
+                                 headers={"X-Forwarded-Email": "a@x.com",
+                                          "Origin": "https://h.ts.net"})
+    await ws.send_str("hi")
+    await ws.receive()
+    await ws.close()
+    assert seen["origin"] == f"http://127.0.0.1:{port}"
+
+
 async def test_http_proxy_passes_compressed_body_unchanged(aiohttp_client, monkeypatch):
     import gzip
     payload = gzip.compress(b"hello world")

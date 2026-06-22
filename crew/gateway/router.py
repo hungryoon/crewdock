@@ -74,7 +74,7 @@ async def _proxy_http(request, port, tail, prefix) -> web.StreamResponse:
 
 async def _proxy_ws(request, port, tail, prefix) -> web.StreamResponse:
     ws_url = f"ws://127.0.0.1:{port}{tail}"
-    headers = routing.proxy_request_headers(dict(request.headers), prefix)
+    headers = routing.ws_proxy_request_headers(dict(request.headers), prefix, port)
     server_ws = web.WebSocketResponse()
     await server_ws.prepare(request)
     async with aiohttp.ClientSession() as session:

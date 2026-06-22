@@ -38,6 +38,22 @@ def proxy_request_headers(incoming: dict, prefix: str) -> dict:
     return out
 
 
+def ws_proxy_request_headers(incoming: dict, prefix: str, port: int) -> dict:
+    """Headers for an upstream WS upgrade, with Origin rewritten to loopback.
+
+    The browser sends the gateway's public Origin (e.g. https://x.ts.net), but
+    the upstream (Hermes) binds to loopback and rejects WS upgrades whose Origin
+    targets a foreign host. Rewrite Origin to the exact upstream we dial so the
+    upgrade is accepted. Only Origin is rewritten here, unlike on the HTTP path.
+    """
+    out = proxy_request_headers(incoming, prefix)
+    # Drop any case-variant of Origin before setting the canonical one.
+    for k in [k for k in out if k.lower() == "origin"]:
+        del out[k]
+    out["Origin"] = f"http://127.0.0.1:{port}"
+    return out
+
+
 def render_index(email: str, published: list[Published]) -> str:
     visible = [p for p in published if email in p.allowed_emails]
     if visible:
