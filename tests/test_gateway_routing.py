@@ -40,3 +40,9 @@ def test_render_index_lists_only_authorized():
     assert "/i/alice/" in html
     assert "/i/bob/" not in html
     assert "a@x.com" in html
+
+
+def test_render_index_empty_state():
+    html = routing.render_index("a@x.com", [])
+    assert "No instances" in html
+    assert "a@x.com" in html

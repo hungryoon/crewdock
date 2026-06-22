@@ -40,14 +40,66 @@ def proxy_request_headers(incoming: dict, prefix: str) -> dict:
 
 def render_index(email: str, published: list[Published]) -> str:
     visible = [p for p in published if email in p.allowed_emails]
-    items = "\n".join(
-        f'      <li><a href="/i/{_html.escape(p.name)}/">'
-        f'{_html.escape(p.name)}</a></li>'
-        for p in visible
-    )
-    return (
-        "<!doctype html><html><head><meta charset=utf-8>"
-        "<title>crew</title></head><body>"
-        f"<h1>crew instances</h1><p>signed in as {_html.escape(email)}</p>"
-        f"<ul>\n{items}\n</ul></body></html>"
-    )
+    if visible:
+        cards = "\n".join(
+            f'      <a class="card" href="/i/{_html.escape(p.name)}/">'
+            f'<span class="name">{_html.escape(p.name)}</span>'
+            f'<span class="go">open dashboard &rarr;</span></a>'
+            for p in visible
+        )
+        body = f'<div class="grid">\n{cards}\n    </div>'
+    else:
+        body = ('<p class="empty">No instances are available for your account.</p>')
+    return f"""\
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crew</title>
+<style>
+  :root {{ color-scheme: light dark; }}
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0; min-height: 100vh;
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #1a1a1a; background: #f6f7f9;
+    display: flex; justify-content: center;
+  }}
+  @media (prefers-color-scheme: dark) {{
+    body {{ color: #e8e8ea; background: #16171a; }}
+    header {{ border-color: #2a2c31 !important; }}
+    .card {{ background: #1e2024 !important; border-color: #2a2c31 !important; }}
+    .card:hover {{ border-color: #4b6bfb !important; }}
+  }}
+  main {{ width: 100%; max-width: 720px; padding: 48px 24px; }}
+  header {{ display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+    padding-bottom: 16px; margin-bottom: 28px; border-bottom: 1px solid #e3e5e9; }}
+  h1 {{ margin: 0; font-size: 20px; letter-spacing: -0.01em; }}
+  h1 .mono {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #4b6bfb; }}
+  .who {{ font-size: 13px; opacity: .7; }}
+  .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 14px; }}
+  .card {{ display: flex; flex-direction: column; gap: 10px;
+    padding: 18px 18px 16px; border: 1px solid #e3e5e9; border-radius: 12px;
+    background: #fff; text-decoration: none; color: inherit;
+    transition: border-color .12s ease, transform .12s ease; }}
+  .card:hover {{ border-color: #4b6bfb; transform: translateY(-1px); }}
+  .name {{ font-weight: 600; font-size: 16px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }}
+  .go {{ font-size: 13px; opacity: .6; }}
+  .empty {{ opacity: .65; }}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1><span class="mono">crew</span> &nbsp;instances</h1>
+    <span class="who">{_html.escape(email)}</span>
+  </header>
+  {body}
+</main>
+</body>
+</html>
+"""
