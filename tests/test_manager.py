@@ -459,3 +459,13 @@ def test_update_rollback_without_previous_errors(root, calls):
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     with pytest.raises(CrewError, match="no previous image"):
         manager.update(root, "alice", rollback=True)
+
+
+def test_update_to_default_repins_to_manifest(root, calls):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    manager.update(root, "alice", image="nousresearch/hermes-agent@sha256:old")
+    manager.update(root, "alice", to_default=True)
+    meta = paths.read_meta(root, "alice")
+    assert meta["image"] == "nousresearch/hermes-agent:latest"
+    assert meta["previous_image"] == "nousresearch/hermes-agent@sha256:old"
