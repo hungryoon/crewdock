@@ -8,6 +8,7 @@ import typer
 from .core import manager
 from .core import expose as expose_mod
 from .core import gateway as gateway_mod
+from .core import credentials as credentials_mod
 from .core.errors import CrewError
 
 app = typer.Typer(help="Host a crew of isolated AI-assistant agent containers.")
@@ -30,13 +31,16 @@ def create(
     bot_token: str = typer.Option(None, help="messenger bot token"),
     layer: list[str] = typer.Option([], "--layer",
                                     help="read-only data layer to mount (repeatable)"),
+    credential: list[str] = typer.Option([], "--credential",
+                                         help="credential bundle to inject (repeatable)"),
 ):
     """Create and start a new instance."""
     creds: dict[str, str] = {}
     if bot_token:
         creds["TELEGRAM_BOT_TOKEN"] = bot_token
     try:
-        inst = manager.create(_root(), name, type=type, creds=creds, layers=layer)
+        inst = manager.create(_root(), name, type=type, creds=creds,
+                              layers=layer, credentials=credential)
     except CrewError as exc:
         _fail(exc)
     typer.echo(f"created {inst.name} ({inst.type}) -> {inst.dashboard_url} "
@@ -210,3 +214,15 @@ def layers():
         return
     for n in names:
         typer.echo(n)
+
+
+@app.command()
+def credentials():
+    """List credential bundles in the pool (key names only — never values)."""
+    names = credentials_mod.list_credentials(_root())
+    if not names:
+        typer.echo("No credentials.")
+        return
+    for name in names:
+        keys = credentials_mod.credential_keys(_root(), [name])
+        typer.echo(f"{name:20} {', '.join(keys) or '(empty)'}")

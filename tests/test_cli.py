@@ -22,7 +22,7 @@ def test_create_invokes_manager(monkeypatch, root):
     _patch(monkeypatch, root)
     captured = {}
 
-    def fake_create(r, name, type, creds, layers):
+    def fake_create(r, name, type, creds, layers, credentials):
         captured.update(name=name, type=type, creds=creds, layers=layers)
         from crew.core.models import Instance
         return Instance(name=name, type=type, port=9120, image="img",
@@ -44,7 +44,7 @@ def test_create_passes_layers(monkeypatch, root):
     _patch(monkeypatch, root)
     captured = {}
 
-    def fake_create(r, name, type, creds, layers):
+    def fake_create(r, name, type, creds, layers, credentials):
         captured["layers"] = layers
         from crew.core.models import Instance
         return Instance(name=name, type=type, port=9120, image="img")
@@ -97,3 +97,34 @@ def test_expose_marks_publish(monkeypatch, root):
     result = runner.invoke(cli.app, ["expose", "alice"])
     assert result.exit_code == 0
     assert called == ["alice"]
+
+
+def test_create_passes_credentials(monkeypatch, root):
+    _patch(monkeypatch, root)
+    captured = {}
+
+    def fake_create(r, name, type, creds, layers, credentials):
+        captured.update(credentials=credentials)
+        from crew.core.models import Instance
+        return Instance(name=name, type=type, port=9120, image="img",
+                        state="running")
+
+    monkeypatch.setattr(manager, "create", fake_create)
+    result = runner.invoke(
+        cli.app,
+        ["create", "alice", "--credential", "anthropic", "--credential", "openai"],
+    )
+    assert result.exit_code == 0
+    assert captured["credentials"] == ["anthropic", "openai"]
+
+
+def test_credentials_command_lists_names_and_keys(monkeypatch, root):
+    _patch(monkeypatch, root)
+    (root / "credentials").mkdir()
+    (root / "credentials" / "anthropic.env").write_text(
+        "ANTHROPIC_API_KEY=secret\nANTHROPIC_BASE=x\n")
+    result = runner.invoke(cli.app, ["credentials"])
+    assert result.exit_code == 0
+    assert "anthropic" in result.stdout
+    assert "ANTHROPIC_API_KEY" in result.stdout
+    assert "secret" not in result.stdout
