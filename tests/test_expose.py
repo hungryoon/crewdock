@@ -67,7 +67,8 @@ def test_render_oauth2_env_contains_all_keys():
     cfg = expose.ExposeConfig("cid", "sec", "c" * 32, ["a@x.com"])
     txt = expose.render_oauth2_env(
         cfg, authport=9300, dashport=9120,
-        redirect="https://h.ts.net:9120/oauth2/callback")
+        redirect="https://h.ts.net:9120/oauth2/callback",
+        cookie_name="_crew_alice")
     assert "OAUTH2_PROXY_PROVIDER=google" in txt
     assert "OAUTH2_PROXY_CLIENT_ID=cid" in txt
     assert "OAUTH2_PROXY_CLIENT_SECRET=sec" in txt
@@ -83,6 +84,9 @@ def test_render_oauth2_env_contains_all_keys():
     # rewrite Host to the upstream so dashboards that validate the Host header
     # (e.g. Hermes binds 127.0.0.1 and rejects other hosts) accept the request.
     assert "OAUTH2_PROXY_PASS_HOST_HEADER=false" in txt
+    # per-instance cookie name: all instances share one tailnet hostname, so a
+    # shared cookie name would collide and break independent multi-instance login.
+    assert "OAUTH2_PROXY_COOKIE_NAME=_crew_alice" in txt
 
 
 def test_auth_container_name():

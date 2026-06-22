@@ -67,12 +67,15 @@ def auth_container_name(name: str) -> str:
 
 
 def render_oauth2_env(cfg: ExposeConfig, authport: int, dashport: int,
-                      redirect: str) -> str:
+                      redirect: str, cookie_name: str) -> str:
     lines = [
         "OAUTH2_PROXY_PROVIDER=google",
         f"OAUTH2_PROXY_CLIENT_ID={cfg.client_id}",
         f"OAUTH2_PROXY_CLIENT_SECRET={cfg.client_secret}",
         f"OAUTH2_PROXY_COOKIE_SECRET={cfg.cookie_secret}",
+        # per-instance cookie name: all instances share one tailnet hostname, so
+        # a shared name collides and breaks independent multi-instance sessions.
+        f"OAUTH2_PROXY_COOKIE_NAME={cookie_name}",
         f"OAUTH2_PROXY_REDIRECT_URL={redirect}",
         f"OAUTH2_PROXY_UPSTREAMS=http://127.0.0.1:{dashport}/",
         f"OAUTH2_PROXY_HTTP_ADDRESS=127.0.0.1:{authport}",
@@ -177,7 +180,9 @@ def expose(root: Path, name: str) -> dict:
     emails_file.write_text("\n".join(cfg.allowed_emails) + "\n")
     emails_file.chmod(0o600)
     env_file = edir / "oauth2.env"
-    env_file.write_text(render_oauth2_env(cfg, authport, dashport, redirect))
+    env_file.write_text(
+        render_oauth2_env(cfg, authport, dashport, redirect,
+                          cookie_name=f"_crew_{name}"))
     env_file.chmod(0o600)
 
     _run_quiet(["docker", "rm", "-f", auth_container_name(name)])
