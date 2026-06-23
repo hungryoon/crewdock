@@ -193,8 +193,9 @@ def render_index(email: str, cards: list[dict]) -> str:
   .llm {{ font-size:11px; border:1px solid var(--border); border-radius:5px; padding:1px 7px; }}
   .llm.ok {{ color:var(--accent); border-color:var(--accent); }}
   .llm.no {{ color:#e07a8a; border-color:#5a3a42; }}
-  .go {{ margin-left:8px; color:var(--accent2); font-size:12px; text-decoration:none; }}
-  .go:hover {{ text-decoration:underline; }}
+  .go {{ margin-left:8px; color:var(--accent2); font-size:11px; text-decoration:none;
+    border:1px solid var(--accent2); border-radius:5px; padding:2px 9px; opacity:.9; }}
+  .go:hover {{ opacity:1; background:rgba(245,231,200,.08); }}
   .detail {{ display:flex; flex-wrap:wrap; gap:6px; }}
   .kv {{ font-size:11px; color:var(--muted);
     border:1px solid var(--border); border-radius:5px; padding:1px 7px; }}
