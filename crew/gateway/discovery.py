@@ -36,8 +36,6 @@ def _emails(root: Path, name: str) -> list[str]:
 def published_instances(root: Path) -> list[Published]:
     out = []
     for name in paths.list_instance_names(root):
-        if not paths.exposed_marker_path(root, name).exists():
-            continue
         port = paths.read_port(root, name)
         if not port:
             continue

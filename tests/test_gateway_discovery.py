@@ -11,25 +11,20 @@ def _instance(root, name, port, emails):
     return d
 
 
-def _publish(root, name):
-    (root / "instances" / name / "exposed").write_text("")
-
-
-def test_published_instances_only_lists_marked(tmp_path):
+def test_published_instances_lists_all_with_a_port(tmp_path):
     (tmp_path / "instances").mkdir()
     _instance(tmp_path, "alice", 9120, "a@x.com, b@y.com")
-    _instance(tmp_path, "bob", 9121, "b@y.com")
-    _publish(tmp_path, "alice")  # only alice published
-    pubs = discovery.published_instances(tmp_path)
-    assert [p.name for p in pubs] == ["alice"]
-    assert pubs[0].port == 9120
-    assert pubs[0].allowed_emails == ["a@x.com", "b@y.com"]
+    _instance(tmp_path, "bob", 9121, None)  # no whitelist -> still listed, empty
+    pubs = {p.name: p for p in discovery.published_instances(tmp_path)}
+    assert set(pubs) == {"alice", "bob"}
+    assert pubs["alice"].port == 9120
+    assert pubs["alice"].allowed_emails == ["a@x.com", "b@y.com"]
+    assert pubs["bob"].allowed_emails == []
 
 
-def test_union_emails_dedupes_across_published(tmp_path):
+def test_union_emails_spans_all_instances_and_dedupes(tmp_path):
     (tmp_path / "instances").mkdir()
     _instance(tmp_path, "alice", 9120, "a@x.com, b@y.com")
     _instance(tmp_path, "bob", 9121, "b@y.com, c@z.com")
-    _publish(tmp_path, "alice")
-    _publish(tmp_path, "bob")
+    _instance(tmp_path, "carol", 9122, None)  # empty whitelist contributes nothing
     assert discovery.union_emails(tmp_path) == ["a@x.com", "b@y.com", "c@z.com"]
