@@ -612,7 +612,7 @@ known_plugin_toolsets:
   - spotify
 platforms:
   telegram:
-    enabled: true
+    enabled: false
 
 # ── Fallback Model ────────────────────────────────────────────────────
 # Automatic provider failover when primary is unavailable.
