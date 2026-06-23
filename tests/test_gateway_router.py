@@ -290,3 +290,43 @@ async def test_probe_up_caches_within_ttl(aiohttp_client, monkeypatch):
     await router._probe_up(port)
     await router._probe_up(port)
     assert hits["n"] == 1   # second call served from cache
+
+
+async def test_setup_forbidden_for_unauthorized(aiohttp_client, monkeypatch):
+    monkeypatch.setattr(router, "_published",
+                        lambda: [Published("alice", 9120, ["a@x.com"])])
+    monkeypatch.setattr(router, "_BROKER_SOCK", "/nope.sock")
+    client = await aiohttp_client(router.build_app())
+    resp = await client.get("/_setup?instance=alice&provider=openai-codex",
+                            headers={"X-Forwarded-Email": "nobody@z.com"})
+    assert resp.status == 403
+
+
+async def test_setup_proxies_broker_stream(aiohttp_client, monkeypatch, tmp_path):
+    # Stand up a fake "broker" on a unix socket that echoes 2 frames + done.
+    # Use /tmp directly to avoid macOS AF_UNIX 104-char path limit on tmp_path.
+    import aiohttp
+    import tempfile
+    sockpath = tempfile.mktemp(suffix=".sock", dir="/tmp")
+
+    async def fake_exec(request):
+        ws = web.WebSocketResponse(); await ws.prepare(request)
+        await ws.send_json({"line": "url: https://x"})
+        await ws.send_json({"line": "code: AB-CD"})
+        await ws.send_json({"done": True, "code": 0})
+        await ws.close(); return ws
+    bapp = web.Application(); bapp.router.add_get("/exec", fake_exec)
+    brunner = web.AppRunner(bapp); await brunner.setup()
+    bsite = web.UnixSite(brunner, sockpath); await bsite.start()
+
+    monkeypatch.setattr(router, "_published",
+                        lambda: [Published("alice", 9120, ["a@x.com"])])
+    monkeypatch.setattr(router, "_BROKER_SOCK", sockpath)
+    monkeypatch.setattr(router, "_BROKER_SECRET", None)
+    client = await aiohttp_client(router.build_app())
+    ws = await client.ws_connect("/_setup?instance=alice&provider=openai-codex",
+                                 headers={"X-Forwarded-Email": "a@x.com"})
+    frames = [msg.json() async for msg in ws]
+    await brunner.cleanup()
+    assert any("https://x" in f.get("line", "") for f in frames)
+    assert any(f.get("done") for f in frames)

@@ -2,6 +2,7 @@ import asyncio
 import mimetypes
 import os
 import time
+import urllib.parse
 from pathlib import Path
 
 import aiohttp
@@ -19,6 +20,8 @@ _EMAIL_HEADER = "X-Forwarded-Email"
 # every request must carry it, so a host-networked instance can't reach the
 # router directly and spoof X-Forwarded-Email. Unset (dev/tests) = check off.
 _GATEWAY_SECRET = os.environ.get("CREW_GATEWAY_SECRET") or None
+_BROKER_SOCK = os.environ.get("CREW_BROKER_SOCK") or None
+_BROKER_SECRET = os.environ.get("CREW_BROKER_SECRET") or None
 
 
 def _root() -> Path:
@@ -189,11 +192,46 @@ async def _proxy_ws(request, port, tail, prefix) -> web.StreamResponse:
     return server_ws
 
 
+async def _setup(request: web.Request) -> web.StreamResponse:
+    _require_gateway(request)
+    email = request.headers.get(_EMAIL_HEADER, "")
+    instance = request.query.get("instance", "")
+    provider = request.query.get("provider", "")
+    action = request.query.get("action", "add")
+    if not routing.authorize(email, instance, _published()):
+        raise web.HTTPForbidden()
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    if not _BROKER_SOCK:
+        await ws.send_json({"line": "model setup service is not running"})
+        await ws.send_json({"done": True, "code": 1})
+        await ws.close()
+        return ws
+    qs = urllib.parse.urlencode({"instance": instance, "action": action,
+                                 "provider": provider})
+    headers = {"X-Crew-Broker-Secret": _BROKER_SECRET or ""}
+    conn = aiohttp.UnixConnector(path=_BROKER_SOCK)
+    try:
+        async with aiohttp.ClientSession(connector=conn) as s:
+            async with s.ws_connect(f"http://broker/exec?{qs}", headers=headers) as up:
+                async for msg in up:
+                    if msg.type == aiohttp.WSMsgType.TEXT and not ws.closed:
+                        await ws.send_str(msg.data)
+    except (aiohttp.ClientError, OSError):
+        if not ws.closed:
+            await ws.send_json({"line": "could not reach model setup service"})
+            await ws.send_json({"done": True, "code": 1})
+    if not ws.closed:
+        await ws.close()
+    return ws
+
+
 def build_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", _index)
     app.router.add_get("/_assets/{name}", _assets)
     app.router.add_get("/_status.json", _status_json)
+    app.router.add_get("/_setup", _setup)
     app.router.add_route("*", "/i/{tail:.*}", _proxy)
     return app
 
