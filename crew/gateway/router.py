@@ -92,7 +92,8 @@ def _require_gateway(request: web.Request) -> None:
 async def _index(request: web.Request) -> web.Response:
     _require_gateway(request)
     email = request.headers.get(_EMAIL_HEADER, "")
-    return web.Response(text=routing.render_index(email, _published()),
+    cards = await _gather_cards(email)
+    return web.Response(text=routing.render_index(email, cards),
                         content_type="text/html")
 
 

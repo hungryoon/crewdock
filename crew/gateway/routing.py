@@ -104,18 +104,26 @@ def ws_proxy_request_headers(incoming: dict, prefix: str, port: int) -> dict:
     return out
 
 
-def render_index(email: str, published: list[Published]) -> str:
-    visible = [p for p in published if email in p.allowed_emails]
-    if visible:
-        cards = "\n".join(
-            f'      <a class="card" href="/i/{_html.escape(p.name)}/">'
-            f'<span class="name">{_html.escape(p.name)}</span>'
-            f'<span class="go">open dashboard &rarr;</span></a>'
-            for p in visible
+def render_index(email: str, cards: list[dict]) -> str:
+    if cards:
+        rows = "\n".join(
+            f'      <a class="card" href="/i/{_html.escape(c["name"])}/" '
+            f'data-name="{_html.escape(c["name"])}">\n'
+            f'        <div class="top">'
+            f'<span class="dot {"up" if c["up"] else "down"}"></span>'
+            f'<span class="name">{_html.escape(c["name"])}</span>'
+            f'<span class="ver">{_html.escape(c.get("image", ""))}</span></div>\n'
+            f'        <div class="meta">'
+            f'<span class="state">{"running" if c["up"] else "down"}</span>'
+            f'<span class="sub">{_html.escape(c.get("timezone", ""))}'
+            f'{" · " + _html.escape(c["created"]) if c.get("created") else ""}</span>'
+            f'<span class="go">open dashboard &rarr;</span></div>\n'
+            f'      </a>'
+            for c in cards
         )
-        body = f'<div class="grid">\n{cards}\n    </div>'
+        body = f'<div class="grid">\n{rows}\n    </div>'
     else:
-        body = ('<p class="empty">No instances are available for your account.</p>')
+        body = '<p class="empty">No instances are available for your account.</p>'
     return f"""\
 <!doctype html>
 <html lang="en">
@@ -124,48 +132,63 @@ def render_index(email: str, published: list[Published]) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>crew</title>
 <style>
-  :root {{ color-scheme: light dark; }}
+  @font-face {{ font-family: "JetBrainsMono"; font-display: swap;
+    src: url("/_assets/JetBrainsMono-Regular.woff2") format("woff2"); }}
+  :root {{ color-scheme: dark light;
+    --bg:#0e1116; --panel:#161b22; --border:#2a313c; --fg:#d6dde6;
+    --muted:#7d8694; --accent:#58e6a8; --accent2:#f5e7c8; --down:#5a6573; }}
   * {{ box-sizing: border-box; }}
-  body {{
-    margin: 0; min-height: 100vh;
-    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    color: #1a1a1a; background: #f6f7f9;
-    display: flex; justify-content: center;
-  }}
-  @media (prefers-color-scheme: dark) {{
-    body {{ color: #e8e8ea; background: #16171a; }}
-    header {{ border-color: #2a2c31 !important; }}
-    .card {{ background: #1e2024 !important; border-color: #2a2c31 !important; }}
-    .card:hover {{ border-color: #4b6bfb !important; }}
-  }}
-  main {{ width: 100%; max-width: 720px; padding: 48px 24px; }}
-  header {{ display: flex; align-items: baseline; justify-content: space-between;
-    gap: 12px; flex-wrap: wrap;
-    padding-bottom: 16px; margin-bottom: 28px; border-bottom: 1px solid #e3e5e9; }}
-  h1 {{ margin: 0; font-size: 20px; letter-spacing: -0.01em; }}
-  h1 .mono {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #4b6bfb; }}
-  .who {{ font-size: 13px; opacity: .7; }}
-  .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 14px; }}
-  .card {{ display: flex; flex-direction: column; gap: 10px;
-    padding: 18px 18px 16px; border: 1px solid #e3e5e9; border-radius: 12px;
-    background: #fff; text-decoration: none; color: inherit;
-    transition: border-color .12s ease, transform .12s ease; }}
-  .card:hover {{ border-color: #4b6bfb; transform: translateY(-1px); }}
-  .name {{ font-weight: 600; font-size: 16px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }}
-  .go {{ font-size: 13px; opacity: .6; }}
-  .empty {{ opacity: .65; }}
+  body {{ margin:0; min-height:100vh; display:flex; justify-content:center;
+    background:var(--bg); color:var(--fg);
+    font:14px/1.55 "JetBrainsMono", ui-monospace, SFMono-Regular, Menlo, monospace; }}
+  main {{ width:100%; max-width:760px; padding:48px 24px; }}
+  header {{ display:flex; align-items:baseline; justify-content:space-between;
+    gap:12px; flex-wrap:wrap; padding-bottom:14px; margin-bottom:26px;
+    border-bottom:1px solid var(--border); }}
+  h1 {{ margin:0; font-size:18px; font-weight:600; letter-spacing:-0.01em; }}
+  h1 .p {{ color:var(--accent); }}
+  .who {{ font-size:12px; color:var(--muted); }}
+  .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }}
+  .card {{ display:flex; flex-direction:column; gap:10px; padding:14px 16px;
+    border:1px solid var(--border); border-radius:10px; background:var(--panel);
+    text-decoration:none; color:inherit; transition:border-color .12s, transform .12s; }}
+  .card:hover {{ border-color:var(--accent); transform:translateY(-1px); }}
+  .top {{ display:flex; align-items:center; gap:8px; }}
+  .dot {{ width:8px; height:8px; border-radius:50%; flex:none; background:var(--down); }}
+  .dot.up {{ background:var(--accent); box-shadow:0 0 6px var(--accent); }}
+  .name {{ font-weight:600; font-size:15px; }}
+  .ver {{ margin-left:auto; font-size:11px; color:var(--muted);
+    border:1px solid var(--border); border-radius:5px; padding:1px 6px; }}
+  .meta {{ display:flex; flex-direction:column; gap:3px; font-size:12px; }}
+  .state {{ color:var(--muted); }}
+  .sub {{ color:var(--muted); }}
+  .go {{ color:var(--accent2); opacity:.8; font-size:12px; }}
+  .empty {{ color:var(--muted); }}
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1><span class="mono">crew</span> &nbsp;instances</h1>
+    <h1><span class="p">crew</span>&nbsp;~&nbsp;instances</h1>
     <span class="who">{_html.escape(email)}</span>
   </header>
   {body}
 </main>
+<script>
+  async function refresh() {{
+    try {{
+      const r = await fetch("/_status.json", {{credentials:"same-origin"}});
+      if (!r.ok) return;
+      for (const c of await r.json()) {{
+        const el = document.querySelector('.card[data-name="'+CSS.escape(c.name)+'"] .dot');
+        if (el) el.className = "dot " + (c.up ? "up" : "down");
+        const st = document.querySelector('.card[data-name="'+CSS.escape(c.name)+'"] .state');
+        if (st) st.textContent = c.up ? "running" : "down";
+      }}
+    }} catch (e) {{}}
+  }}
+  setInterval(refresh, 10000);
+</script>
 </body>
 </html>
 """

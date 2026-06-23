@@ -55,9 +55,9 @@ def test_proxy_request_headers_leaves_origin_untouched():
 
 
 def test_render_index_lists_only_authorized():
-    pubs = [Published("alice", 9120, ["a@x.com"]),
-            Published("bob", 9121, ["b@y.com"])]
-    html = routing.render_index("a@x.com", pubs)
+    # render_index now takes card dicts; filtering is done upstream by _gather_cards
+    cards = [{"name": "alice", "up": True, "image": "", "timezone": "", "created": ""}]
+    html = routing.render_index("a@x.com", cards)
     assert "/i/alice/" in html
     assert "/i/bob/" not in html
     assert "a@x.com" in html
@@ -96,6 +96,43 @@ def test_proxy_request_headers_drops_authorization():
         {"Authorization": "Basic abc", "X-Foo": "1"}, "/i/a")
     assert "X-Foo" in out
     assert not any(k.lower() == "authorization" for k in out)
+
+
+def test_render_index_shows_status_fields():
+    from crew.gateway import routing
+    cards = [{"name": "alice", "up": True, "image": "v2026.6.19",
+              "timezone": "Asia/Seoul", "created": "2026-06-23"}]
+    html = routing.render_index("a@x.com", cards)
+    assert "alice" in html
+    assert "/i/alice/" in html
+    assert "v2026.6.19" in html
+    assert "Asia/Seoul" in html
+    assert "JetBrainsMono" in html            # @font-face present
+    assert "/_assets/JetBrainsMono-Regular.woff2" in html
+    assert 'data-name="alice"' in html        # JS refresh hook
+    assert "a@x.com" in html
+
+
+def test_render_index_marks_down():
+    from crew.gateway import routing
+    cards = [{"name": "bob", "up": False, "image": "latest",
+              "timezone": "UTC", "created": ""}]
+    html = routing.render_index("a@x.com", cards)
+    assert "down" in html        # status token
+    assert "bob" in html
+
+
+def test_render_index_empty():
+    from crew.gateway import routing
+    assert "No instances" in routing.render_index("a@x.com", [])
+
+
+def test_render_index_escapes():
+    from crew.gateway import routing
+    html = routing.render_index("<b>@x.com",
+        [{"name": "<x>", "up": True, "image": "", "timezone": "", "created": ""}])
+    assert "<b>@x.com" not in html      # escaped
+    assert "&lt;x&gt;" in html
 
 
 def test_short_image_prefers_tag():
