@@ -28,7 +28,6 @@ def _fail(exc: Exception) -> NoReturn:
 def create(
     name: str,
     type: str = typer.Option("hermes", help="agent type (manifest in agents/)"),
-    bot_token: str = typer.Option(None, help="messenger bot token"),
     layer: list[str] = typer.Option([], "--layer",
                                     help="read-only data layer to mount (repeatable)"),
     credential: list[str] = typer.Option([], "--credential",
@@ -38,8 +37,6 @@ def create(
 ):
     """Create and start a new instance."""
     creds: dict[str, str] = {}
-    if bot_token:
-        creds["TELEGRAM_BOT_TOKEN"] = bot_token
     try:
         inst = manager.create(_root(), name, type=type, creds=creds,
                               layers=layer, credentials=credential, tz=timezone)

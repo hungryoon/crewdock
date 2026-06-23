@@ -58,7 +58,6 @@ def test_render_produces_valid_compose_with_interpolated_secrets(manifest_file):
     # static env baked literally
     assert "HERMES_DASHBOARD=1" in svc["environment"]
     # passthrough secrets referenced, never baked
-    assert "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}" in svc["environment"]
     assert "HERMES_UID=${HERMES_UID:-}" in svc["environment"]
 
 

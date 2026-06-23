@@ -31,11 +31,10 @@ def test_create_invokes_manager(monkeypatch, root):
     monkeypatch.setattr(manager, "create", fake_create)
     result = runner.invoke(
         cli.app,
-        ["create", "alice", "--type", "hermes", "--bot-token", "tok"],
+        ["create", "alice", "--type", "hermes"],
     )
     assert result.exit_code == 0
     assert captured["name"] == "alice"
-    assert captured["creds"]["TELEGRAM_BOT_TOKEN"] == "tok"
     assert "alice" in result.stdout
     assert "9120" in result.stdout
 
@@ -52,7 +51,7 @@ def test_create_passes_layers(monkeypatch, root):
     monkeypatch.setattr(manager, "create", fake_create)
     result = runner.invoke(
         cli.app,
-        ["create", "alice", "--bot-token", "t",
+        ["create", "alice",
          "--layer", "knowledge", "--layer", "brand-voice"],
     )
     assert result.exit_code == 0

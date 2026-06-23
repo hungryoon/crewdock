@@ -27,7 +27,6 @@ env:
 passthrough_env:
   - HERMES_UID
   - HERMES_GID
-  - TELEGRAM_BOT_TOKEN
   - HERMES_DASHBOARD_SESSION_TOKEN
 host_user_env:
   uid: HERMES_UID
@@ -35,9 +34,6 @@ host_user_env:
 credentials:
   llm:
     inherit_from_shared: true
-  bot_token:
-    required: true
-    env: TELEGRAM_BOT_TOKEN
 resources:
   mem_limit: 4g
   cpus: 2

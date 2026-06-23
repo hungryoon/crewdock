@@ -22,8 +22,6 @@ class Manifest:
     dashboard_port_env: str | None
     static_env: dict[str, str]
     passthrough_env: list[str]
-    bot_token_env: str
-    bot_token_required: bool
     llm_inherit_from_shared: bool
     mem_limit: str
     cpus: float
@@ -45,7 +43,6 @@ def load_manifest(path: Path) -> Manifest:
 
     dash = data["dashboard"]
     creds = data.get("credentials", {})
-    bot = creds.get("bot_token", {})
     llm = creds.get("llm", {})
     res = data.get("resources", {})
 
@@ -62,8 +59,6 @@ def load_manifest(path: Path) -> Manifest:
         dashboard_port_env=dash.get("port_env"),
         static_env={k: str(v) for k, v in data.get("env", {}).items()},
         passthrough_env=list(data.get("passthrough_env", [])),
-        bot_token_env=bot.get("env", ""),
-        bot_token_required=bool(bot.get("required", False)),
         llm_inherit_from_shared=bool(llm.get("inherit_from_shared", True)),
         mem_limit=res.get("mem_limit", "4g"),
         cpus=res.get("cpus", 2),

@@ -20,7 +20,6 @@ env:
 passthrough_env:
   - HERMES_UID
   - HERMES_GID
-  - TELEGRAM_BOT_TOKEN
   - HERMES_DASHBOARD_SESSION_TOKEN
 # crewdock fills these with the host uid/gid at create time so the container
 # (which starts as root) drops privileges to the host user — keeps the
@@ -31,9 +30,6 @@ host_user_env:
 credentials:
   llm:
     inherit_from_shared: true
-  bot_token:
-    required: true
-    env: TELEGRAM_BOT_TOKEN
 resources:
   mem_limit: 4g
   cpus: 2

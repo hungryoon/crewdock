@@ -14,10 +14,8 @@ def test_load_manifest_parses_all_fields(manifest_file):
     assert m.dashboard_port == 9119
     assert m.dashboard_host == "127.0.0.1"
     assert m.static_env["HERMES_DASHBOARD"] == "1"
-    assert m.passthrough_env == ["HERMES_UID", "HERMES_GID", "TELEGRAM_BOT_TOKEN",
+    assert m.passthrough_env == ["HERMES_UID", "HERMES_GID",
                                  "HERMES_DASHBOARD_SESSION_TOKEN"]
-    assert m.bot_token_env == "TELEGRAM_BOT_TOKEN"
-    assert m.bot_token_required is True
     assert m.mem_limit == "4g"
     assert m.cpus == 2
     assert m.seed_config == "_template/config.yaml"
