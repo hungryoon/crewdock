@@ -192,3 +192,49 @@ def test_render_index_has_setup_button_and_panel():
     assert 'data-setup="alice"' in html        # button hook
     assert "/_setup?" in html                   # JS opens the setup WS
     assert "openai-codex" in html               # provider option present
+
+
+def test_render_index_llm_chip_connected_and_not_set():
+    from crew.gateway import routing
+    html = routing.render_index("u@x.com",
+        [{"name": "a", "up": True, "model": "openai-codex", "model_ok": True}])
+    assert "llm: openai-codex" in html
+    assert 'class="llm ok"' in html
+    html2 = routing.render_index("u@x.com",
+        [{"name": "b", "up": True, "model": "", "model_ok": False}])
+    assert "not set" in html2
+    assert 'class="llm no"' in html2
+
+
+def test_render_index_has_modal():
+    from crew.gateway import routing
+    html = routing.render_index("u@x.com", [{"name": "a", "up": True}])
+    assert 'id="modal"' in html
+    assert 'id="m-start"' in html
+    assert 'id="m-out"' in html
+    assert "openai-codex" in html
+
+
+def test_instance_model_connected(tmp_path):
+    import json
+    from crew.gateway import discovery
+    d = tmp_path / "instances" / "alice" / "data"
+    d.mkdir(parents=True)
+    (d / "auth.json").write_text(json.dumps(
+        {"active_provider": "openai-codex", "credential_pool": ["openai-codex"]}))
+    assert discovery.instance_model(tmp_path, "alice") == {
+        "provider": "openai-codex", "connected": True}
+
+
+def test_instance_model_not_connected_or_missing(tmp_path):
+    import json
+    from crew.gateway import discovery
+    d = tmp_path / "instances" / "bob" / "data"
+    d.mkdir(parents=True)
+    (d / "auth.json").write_text(json.dumps(
+        {"active_provider": "openai-codex", "credential_pool": []}))
+    assert discovery.instance_model(tmp_path, "bob") == {
+        "provider": "openai-codex", "connected": False}
+    (tmp_path / "instances" / "carol" / "data").mkdir(parents=True)
+    assert discovery.instance_model(tmp_path, "carol") == {
+        "provider": "", "connected": False}

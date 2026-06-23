@@ -1,8 +1,23 @@
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from crew.core import paths
 from crew.core.creds import parse_env_file
+
+
+def instance_model(root: Path, name: str) -> dict:
+    """{'provider': <active LLM provider or ''>, 'connected': bool} from the
+    instance's data/auth.json (host-readable via the ro mount). `connected` means
+    the active provider has a credential in the pool. {'','False'} if absent."""
+    path = paths.instance_dir(root, name) / "data" / "auth.json"
+    try:
+        d = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {"provider": "", "connected": False}
+    provider = d.get("active_provider") or ""
+    pool = d.get("credential_pool") or []
+    return {"provider": provider, "connected": bool(provider) and provider in pool}
 
 
 @dataclass

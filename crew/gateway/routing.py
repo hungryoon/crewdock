@@ -132,26 +132,24 @@ def render_index(email: str, cards: list[dict]) -> str:
             chips = "".join(f'<span class="kv">{kv}</span>' for kv in _detail_kvs(c))
             if c.get("rollback"):
                 chips += '<span class="kv rb">&#8629; rollback</span>'
+            prov = c.get("model", "")
+            if prov:
+                _ok = c.get("model_ok")
+                llm = (f'<span class="llm {"ok" if _ok else "no"}">llm: '
+                       f'{_html.escape(prov)} {"&#10003;" if _ok else "&#10007;"}</span>')
+            else:
+                llm = '<span class="llm no">llm: not set &#10007;</span>'
             return (
                 f'      <div class="row" data-name="{name}">\n'
                 f'        <div class="head">'
                 f'<span class="dot {"up" if c["up"] else "down"}"></span>'
                 f'<span class="name">{name}</span>'
                 f'<span class="state">{"running" if c["up"] else "down"}</span>'
+                f'{llm}'
                 f'<a class="go" href="/i/{name}/">open dashboard &rarr;</a>'
                 f'<button class="setup" data-setup="{name}">&#9881; model setup</button>'
                 f'</div>\n'
                 f'        <div class="detail">{chips}</div>\n'
-                f'        <div class="panel" data-panel="{name}" hidden>\n'
-                f'          <select class="prov">'
-                f'<option value="openai-codex">openai-codex</option>'
-                f'<option value="nous">nous</option>'
-                f'<option value="qwen-oauth">qwen-oauth</option>'
-                f'<option value="anthropic">anthropic</option>'
-                f'<option value="openrouter">openrouter</option></select>'
-                f'<button class="start">start</button>\n'
-                f'          <pre class="out"></pre>\n'
-                f'        </div>\n'
                 f'      </div>'
             )
         rows = "\n".join(row(c) for c in cards)
@@ -192,6 +190,9 @@ def render_index(email: str, cards: list[dict]) -> str:
   .dot.up {{ background:var(--accent); box-shadow:0 0 6px var(--accent); }}
   .name {{ font-weight:600; font-size:15px; }}
   .state {{ font-size:12px; color:var(--muted); }}
+  .llm {{ font-size:11px; border:1px solid var(--border); border-radius:5px; padding:1px 7px; }}
+  .llm.ok {{ color:var(--accent); border-color:var(--accent); }}
+  .llm.no {{ color:#e07a8a; border-color:#5a3a42; }}
   .go {{ margin-left:auto; color:var(--accent2); opacity:.85; font-size:12px; }}
   .detail {{ display:flex; flex-wrap:wrap; gap:6px; }}
   .kv {{ font-size:11px; color:var(--muted);
@@ -202,13 +203,22 @@ def render_index(email: str, cards: list[dict]) -> str:
     color:var(--fg); background:transparent; border:1px solid var(--border);
     border-radius:5px; padding:1px 7px; }}
   .setup:hover {{ border-color:var(--accent); }}
-  .panel {{ display:flex; flex-direction:column; gap:8px; margin-top:4px; }}
-  .panel select, .panel .start {{ font:inherit; font-size:12px; align-self:flex-start;
+  .modal {{ position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:10;
+    display:flex; align-items:center; justify-content:center; padding:24px; }}
+  .modal[hidden] {{ display:none; }}
+  .dialog {{ width:100%; max-width:520px; background:var(--panel);
+    border:1px solid var(--border); border-radius:12px; padding:18px 20px;
+    display:flex; flex-direction:column; gap:12px; }}
+  .dialog h2 {{ margin:0; font-size:14px; font-weight:600; }}
+  .dialog h2 .i {{ color:var(--accent); }}
+  .drow {{ display:flex; gap:8px; align-items:center; }}
+  .dialog select, .dialog button {{ font:inherit; font-size:12px; cursor:pointer;
     background:var(--bg); color:var(--fg); border:1px solid var(--border);
-    border-radius:5px; padding:3px 8px; }}
-  .panel .start {{ cursor:pointer; }}
+    border-radius:5px; padding:4px 9px; }}
+  .dialog .close {{ margin-left:auto; }}
   .out {{ margin:0; white-space:pre-wrap; word-break:break-all; font-size:12px;
-    color:var(--muted); max-height:220px; overflow:auto; }}
+    color:var(--muted); min-height:60px; max-height:300px; overflow:auto;
+    background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px; }}
   .out a {{ color:var(--accent); }}
 </style>
 </head>
@@ -220,6 +230,23 @@ def render_index(email: str, cards: list[dict]) -> str:
   </header>
   {body}
 </main>
+<div class="modal" id="modal" hidden>
+  <div class="dialog">
+    <h2>model setup &mdash; <span class="i" id="m-inst"></span></h2>
+    <div class="drow">
+      <select id="m-prov">
+        <option value="openai-codex">openai-codex</option>
+        <option value="nous">nous</option>
+        <option value="qwen-oauth">qwen-oauth</option>
+        <option value="anthropic">anthropic</option>
+        <option value="openrouter">openrouter</option>
+      </select>
+      <button id="m-start">start</button>
+      <button class="close" id="m-close">close</button>
+    </div>
+    <pre class="out" id="m-out"></pre>
+  </div>
+</div>
 <script>
   async function refresh() {{
     try {{
@@ -234,32 +261,36 @@ def render_index(email: str, cards: list[dict]) -> str:
     }} catch (e) {{}}
   }}
   setInterval(refresh, 10000);
+  let setupWs = null;
+  const modal = document.getElementById("modal");
+  const mInst = document.getElementById("m-inst");
+  const mProv = document.getElementById("m-prov");
+  const mOut = document.getElementById("m-out");
+  function closeModal() {{
+    modal.hidden = true;
+    if (setupWs) {{ try {{ setupWs.close(); }} catch (e) {{}} setupWs = null; }}
+  }}
   document.addEventListener("click", (e) => {{
     const b = e.target.closest(".setup");
-    if (b) {{
-      const p = document.querySelector('.panel[data-panel="'+CSS.escape(b.dataset.setup)+'"]');
-      if (p) p.hidden = !p.hidden;
-      return;
-    }}
-    const s = e.target.closest(".start");
-    if (s) {{
-      const panel = s.closest(".panel");
-      const name = panel.getAttribute("data-panel");
-      const prov = panel.querySelector(".prov").value;
-      const out = panel.querySelector(".out");
-      out.textContent = "starting...\\n";
+    if (b) {{ mInst.textContent = b.dataset.setup; mOut.textContent = ""; modal.hidden = false; return; }}
+    if (e.target === modal || e.target.closest("#m-close")) {{ closeModal(); return; }}
+    if (e.target.closest("#m-start")) {{
+      const name = mInst.textContent;
+      const prov = mProv.value;
+      mOut.textContent = "starting...\\n";
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(proto + "//" + location.host
+      setupWs = new WebSocket(proto + "//" + location.host
         + "/_setup?instance=" + encodeURIComponent(name)
         + "&provider=" + encodeURIComponent(prov));
-      ws.onmessage = (ev) => {{
+      setupWs.onmessage = (ev) => {{
         const d = JSON.parse(ev.data);
-        if (d.done) {{ out.textContent += (d.code === 0 ? "\\n✓ done" : "\\n✗ failed (code "+d.code+")"); ws.close(); }}
-        else {{ out.textContent += d.line + "\\n"; out.scrollTop = out.scrollHeight; }}
+        if (d.done) {{ mOut.textContent += (d.code === 0 ? "\\n✓ done" : "\\n✗ failed (code "+d.code+")"); }}
+        else {{ mOut.textContent += d.line + "\\n"; mOut.scrollTop = mOut.scrollHeight; }}
       }};
-      ws.onerror = () => {{ out.textContent += "\\nconnection error"; }};
+      setupWs.onerror = () => {{ mOut.textContent += "\\nconnection error"; }};
     }}
   }});
+  document.addEventListener("keydown", (e) => {{ if (e.key === "Escape") closeModal(); }});
 </script>
 </body>
 </html>

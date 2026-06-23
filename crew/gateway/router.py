@@ -76,6 +76,7 @@ async def _gather_cards(email: str) -> list[dict]:
 
     async def build(p):
         meta = paths.read_meta(root, p.name)
+        model = discovery.instance_model(root, p.name)
         return {
             "name": p.name,
             "up": await _probe_up(p.port),
@@ -87,6 +88,8 @@ async def _gather_cards(email: str) -> list[dict]:
             "layers": list(meta.get("layers", []) or []),
             "credentials": list(meta.get("credentials", []) or []),
             "rollback": bool(meta.get("previous_image")),
+            "model": model["provider"],
+            "model_ok": model["connected"],
         }
 
     return list(await asyncio.gather(*[build(p) for p in pubs]))
