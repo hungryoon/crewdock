@@ -208,6 +208,21 @@ async def test_proxy_ok_with_correct_gateway_secret(aiohttp_client, monkeypatch)
     assert data["auth"] == ""
 
 
+async def test_assets_serves_font_without_gateway_secret(aiohttp_client, monkeypatch):
+    monkeypatch.setattr(router, "_GATEWAY_SECRET", "S3CRET")   # gate ON
+    client = await aiohttp_client(router.build_app())
+    resp = await client.get("/_assets/JetBrainsMono-Regular.woff2")  # no Basic auth
+    assert resp.status == 200
+    assert "woff2" in resp.headers.get("Content-Type", "")
+    assert len(await resp.read()) > 0
+
+
+async def test_assets_rejects_unknown_or_traversal(aiohttp_client):
+    client = await aiohttp_client(router.build_app())
+    assert (await client.get("/_assets/secrets.env")).status == 404
+    assert (await client.get("/_assets/..%2f..%2fetc%2fpasswd")).status in (400, 404)
+
+
 async def test_probe_up_true_for_live_upstream(aiohttp_client, monkeypatch):
     async def ok(request):
         return web.Response(text="x")

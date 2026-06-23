@@ -1,4 +1,5 @@
 import asyncio
+import mimetypes
 import os
 import time
 from pathlib import Path
@@ -8,6 +9,10 @@ from aiohttp import web
 
 from crew.gateway import discovery, routing
 from crew.core import paths
+
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+_ASSET_WHITELIST = {"JetBrainsMono-Regular.woff2"}
+mimetypes.add_type("font/woff2", ".woff2")
 
 _EMAIL_HEADER = "X-Forwarded-Email"
 # Shared secret only oauth2-proxy injects (as the Basic-auth password). When set,
@@ -22,6 +27,20 @@ def _root() -> Path:
 
 def _published():
     return discovery.published_instances(_root())
+
+
+async def _assets(request: web.Request) -> web.StreamResponse:
+    # Gate-exempt static fonts. Whitelist-only (no traversal); not secret.
+    name = request.match_info["name"]
+    if name not in _ASSET_WHITELIST:
+        raise web.HTTPNotFound()
+    path = _ASSETS_DIR / name
+    if not path.is_file():
+        raise web.HTTPNotFound()
+    return web.FileResponse(path, headers={
+        "Content-Type": "font/woff2",
+        "Cache-Control": "public, max-age=86400",
+    })
 
 
 _PROBE_TTL = 5.0
@@ -161,6 +180,7 @@ async def _proxy_ws(request, port, tail, prefix) -> web.StreamResponse:
 def build_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", _index)
+    app.router.add_get("/_assets/{name}", _assets)
     app.router.add_route("*", "/i/{tail:.*}", _proxy)
     return app
 
