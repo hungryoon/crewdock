@@ -1,11 +1,13 @@
 import asyncio
 import os
+import time
 from pathlib import Path
 
 import aiohttp
 from aiohttp import web
 
 from crew.gateway import discovery, routing
+from crew.core import paths
 
 _EMAIL_HEADER = "X-Forwarded-Email"
 # Shared secret only oauth2-proxy injects (as the Basic-auth password). When set,
@@ -20,6 +22,47 @@ def _root() -> Path:
 
 def _published():
     return discovery.published_instances(_root())
+
+
+_PROBE_TTL = 5.0
+_probe_cache: dict[int, tuple[float, bool]] = {}
+
+
+async def _probe_up(port: int) -> bool:
+    """Is the instance dashboard answering on loopback? Cached for _PROBE_TTL s.
+    Any HTTP response counts as up; timeout/refused = down."""
+    now = time.monotonic()
+    hit = _probe_cache.get(port)
+    if hit is not None and now - hit[0] < _PROBE_TTL:
+        return hit[1]
+    up = False
+    try:
+        timeout = aiohttp.ClientTimeout(total=1.5)
+        async with aiohttp.ClientSession(timeout=timeout) as s:
+            async with s.get(f"http://127.0.0.1:{port}/"):
+                up = True
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
+        up = False
+    _probe_cache[port] = (now, up)
+    return up
+
+
+async def _gather_cards(email: str) -> list[dict]:
+    """Build display cards for the instances this email may see."""
+    root = _root()
+    pubs = [p for p in _published() if email in p.allowed_emails]
+
+    async def build(p):
+        meta = paths.read_meta(root, p.name)
+        return {
+            "name": p.name,
+            "up": await _probe_up(p.port),
+            "image": routing.short_image(meta.get("image", "")),
+            "timezone": meta.get("timezone", ""),
+            "created": routing.fmt_created(meta.get("created_at", "")),
+        }
+
+    return list(await asyncio.gather(*[build(p) for p in pubs]))
 
 
 def _require_gateway(request: web.Request) -> None:

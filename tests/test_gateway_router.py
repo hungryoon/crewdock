@@ -206,3 +206,38 @@ async def test_proxy_ok_with_correct_gateway_secret(aiohttp_client, monkeypatch)
     # Authorization (the gateway secret) must NOT be forwarded to the instance
     data = await resp.json()
     assert data["auth"] == ""
+
+
+async def test_probe_up_true_for_live_upstream(aiohttp_client, monkeypatch):
+    async def ok(request):
+        return web.Response(text="x")
+    up = web.Application()
+    up.router.add_route("GET", "/", ok)
+    up_client = await aiohttp_client(up)
+    port = up_client.server.port
+    monkeypatch.setattr(router, "_probe_cache", {})
+    assert await router._probe_up(port) is True
+
+
+async def test_probe_up_false_for_dead_port(monkeypatch):
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        dead = s.getsockname()[1]
+    monkeypatch.setattr(router, "_probe_cache", {})
+    assert await router._probe_up(dead) is False
+
+
+async def test_probe_up_caches_within_ttl(aiohttp_client, monkeypatch):
+    hits = {"n": 0}
+    async def ok(request):
+        hits["n"] += 1
+        return web.Response(text="x")
+    up = web.Application()
+    up.router.add_route("GET", "/", ok)
+    up_client = await aiohttp_client(up)
+    port = up_client.server.port
+    monkeypatch.setattr(router, "_probe_cache", {})
+    await router._probe_up(port)
+    await router._probe_up(port)
+    assert hits["n"] == 1   # second call served from cache
