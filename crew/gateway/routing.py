@@ -133,14 +133,26 @@ def render_index(email: str, cards: list[dict]) -> str:
             if c.get("rollback"):
                 chips += '<span class="kv rb">&#8629; rollback</span>'
             return (
-                f'      <a class="row" href="/i/{name}/" data-name="{name}">\n'
+                f'      <div class="row" data-name="{name}">\n'
                 f'        <div class="head">'
                 f'<span class="dot {"up" if c["up"] else "down"}"></span>'
                 f'<span class="name">{name}</span>'
                 f'<span class="state">{"running" if c["up"] else "down"}</span>'
-                f'<span class="go">open dashboard &rarr;</span></div>\n'
+                f'<a class="go" href="/i/{name}/">open dashboard &rarr;</a>'
+                f'<button class="setup" data-setup="{name}">&#9881; model setup</button>'
+                f'</div>\n'
                 f'        <div class="detail">{chips}</div>\n'
-                f'      </a>'
+                f'        <div class="panel" data-panel="{name}" hidden>\n'
+                f'          <select class="prov">'
+                f'<option value="openai-codex">openai-codex</option>'
+                f'<option value="nous">nous</option>'
+                f'<option value="qwen-oauth">qwen-oauth</option>'
+                f'<option value="anthropic">anthropic</option>'
+                f'<option value="openrouter">openrouter</option></select>'
+                f'<button class="start">start</button>\n'
+                f'          <pre class="out"></pre>\n'
+                f'        </div>\n'
+                f'      </div>'
             )
         rows = "\n".join(row(c) for c in cards)
         body = f'<div class="list">\n{rows}\n    </div>'
@@ -186,6 +198,18 @@ def render_index(email: str, cards: list[dict]) -> str:
     border:1px solid var(--border); border-radius:5px; padding:1px 7px; }}
   .kv.rb {{ color:var(--accent2); border-color:var(--accent2); opacity:.85; }}
   .empty {{ color:var(--muted); }}
+  .setup {{ margin-left:8px; font:inherit; font-size:11px; cursor:pointer;
+    color:var(--fg); background:transparent; border:1px solid var(--border);
+    border-radius:5px; padding:1px 7px; }}
+  .setup:hover {{ border-color:var(--accent); }}
+  .panel {{ display:flex; flex-direction:column; gap:8px; margin-top:4px; }}
+  .panel select, .panel .start {{ font:inherit; font-size:12px; align-self:flex-start;
+    background:var(--bg); color:var(--fg); border:1px solid var(--border);
+    border-radius:5px; padding:3px 8px; }}
+  .panel .start {{ cursor:pointer; }}
+  .out {{ margin:0; white-space:pre-wrap; word-break:break-all; font-size:12px;
+    color:var(--muted); max-height:220px; overflow:auto; }}
+  .out a {{ color:var(--accent); }}
 </style>
 </head>
 <body>
@@ -210,6 +234,32 @@ def render_index(email: str, cards: list[dict]) -> str:
     }} catch (e) {{}}
   }}
   setInterval(refresh, 10000);
+  document.addEventListener("click", (e) => {{
+    const b = e.target.closest(".setup");
+    if (b) {{
+      const p = document.querySelector('.panel[data-panel="'+CSS.escape(b.dataset.setup)+'"]');
+      if (p) p.hidden = !p.hidden;
+      return;
+    }}
+    const s = e.target.closest(".start");
+    if (s) {{
+      const panel = s.closest(".panel");
+      const name = panel.getAttribute("data-panel");
+      const prov = panel.querySelector(".prov").value;
+      const out = panel.querySelector(".out");
+      out.textContent = "starting...\\n";
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(proto + "//" + location.host
+        + "/_setup?instance=" + encodeURIComponent(name)
+        + "&provider=" + encodeURIComponent(prov));
+      ws.onmessage = (ev) => {{
+        const d = JSON.parse(ev.data);
+        if (d.done) {{ out.textContent += (d.code === 0 ? "\\n✓ done" : "\\n✗ failed (code "+d.code+")"); ws.close(); }}
+        else {{ out.textContent += d.line + "\\n"; out.scrollTop = out.scrollHeight; }}
+      }};
+      ws.onerror = () => {{ out.textContent += "\\nconnection error"; }};
+    }}
+  }});
 </script>
 </body>
 </html>

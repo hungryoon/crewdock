@@ -180,3 +180,15 @@ def test_render_index_list_shows_details_and_rollback():
     assert "layers: knowledge" in html
     assert "creds: anthropic" in html
     assert "rollback" in html
+
+
+def test_render_index_has_setup_button_and_panel():
+    from crew.gateway import routing
+    cards = [{"name": "alice", "up": True, "image": "v1", "timezone": "UTC",
+              "created": "2026-06-23", "type": "hermes", "port": 9120,
+              "layers": [], "credentials": [], "rollback": False}]
+    html = routing.render_index("a@x.com", cards)
+    assert "model setup" in html.lower()
+    assert 'data-setup="alice"' in html        # button hook
+    assert "/_setup?" in html                   # JS opens the setup WS
+    assert "openai-codex" in html               # provider option present
