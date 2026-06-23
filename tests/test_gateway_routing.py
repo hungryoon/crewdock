@@ -96,3 +96,24 @@ def test_proxy_request_headers_drops_authorization():
         {"Authorization": "Basic abc", "X-Foo": "1"}, "/i/a")
     assert "X-Foo" in out
     assert not any(k.lower() == "authorization" for k in out)
+
+
+def test_short_image_prefers_tag():
+    from crew.gateway import routing
+    assert routing.short_image(
+        "nousresearch/hermes-agent:v2026.6.19@sha256:9f367c7756ef00") == "v2026.6.19"
+    assert routing.short_image("nousresearch/hermes-agent:latest") == "latest"
+
+
+def test_short_image_falls_back_to_short_digest():
+    from crew.gateway import routing
+    assert routing.short_image(
+        "nousresearch/hermes-agent@sha256:9f367c7756ef0011aa") == "@9f367c7756ef"
+    assert routing.short_image("") == ""
+
+
+def test_fmt_created():
+    from crew.gateway import routing
+    assert routing.fmt_created("20260623T024431Z") == "2026-06-23"
+    assert routing.fmt_created("") == ""
+    assert routing.fmt_created("garbage") == ""

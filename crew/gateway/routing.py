@@ -12,6 +12,28 @@ _HOP_BY_HOP = {
 }
 
 
+def short_image(ref: str) -> str:
+    """Compact image label for the UI: prefer the tag, else a short digest."""
+    if not ref:
+        return ""
+    name_part, _, digest = ref.partition("@sha256:")
+    last = name_part.rsplit("/", 1)[-1]          # e.g. hermes-agent:v2026.6.19
+    tag = last.split(":", 1)[1] if ":" in last else ""
+    if tag:
+        return tag
+    if digest:
+        return "@" + digest[:12]
+    return last
+
+
+def fmt_created(stamp: str) -> str:
+    """`20260623T024431Z` -> `2026-06-23`; empty/unparseable -> ''."""
+    s = stamp or ""
+    if len(s) >= 8 and s[:8].isdigit():
+        return f"{s[0:4]}-{s[4:6]}-{s[6:8]}"
+    return ""
+
+
 def parse_instance_path(path: str):
     """('/i/<name>/<tail>') -> (name, '/<tail>'); None if not an instance path."""
     if not path.startswith("/i/"):
