@@ -1,3 +1,4 @@
+import secrets
 import shutil
 from pathlib import Path
 
@@ -18,7 +19,7 @@ GATEWAY_HTTPS_PORT = 443
 
 
 def render_gateway_oauth2_env(cfg, authport: int, routerport: int,
-                              redirect: str) -> str:
+                              redirect: str, gateway_secret: str) -> str:
     lines = [
         "OAUTH2_PROXY_PROVIDER=google",
         f"OAUTH2_PROXY_CLIENT_ID={cfg.client_id}",
@@ -29,6 +30,11 @@ def render_gateway_oauth2_env(cfg, authport: int, routerport: int,
         f"OAUTH2_PROXY_HTTP_ADDRESS=127.0.0.1:{authport}",
         "OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE=/etc/oauth2-proxy/emails.txt",
         "OAUTH2_PROXY_PASS_USER_HEADERS=true",
+        # Inject a shared secret as the Basic-auth password on every upstream
+        # request; the router verifies it so a host-networked instance can't
+        # bypass oauth2-proxy and spoof X-Forwarded-Email.
+        "OAUTH2_PROXY_PASS_BASIC_AUTH=true",
+        f"OAUTH2_PROXY_BASIC_AUTH_PASSWORD={gateway_secret}",
         "OAUTH2_PROXY_REVERSE_PROXY=true",
         "OAUTH2_PROXY_PROXY_WEBSOCKETS=true",
         "OAUTH2_PROXY_COOKIE_SECURE=true",
@@ -44,13 +50,15 @@ def router_build_argv(repo_root: str) -> list[str]:
     ]
 
 
-def router_run_argv(root_abs: str, router_port: int) -> list[str]:
+def router_run_argv(root_abs: str, router_port: int,
+                    gateway_secret: str) -> list[str]:
     root_abs = str(root_abs)
     return [
         "docker", "run", "-d", "--pull", "never", "--name", ROUTER_CONTAINER,
         "--network", "host", "--restart", "unless-stopped",
         "-v", f"{root_abs}/instances:/crew/instances:ro",
         "-e", f"CREW_ROUTER_PORT={router_port}",
+        "-e", f"CREW_GATEWAY_SECRET={gateway_secret}",
         "-e", "CREW_ROOT=/crew",
         ROUTER_IMAGE,
     ]
@@ -77,9 +85,12 @@ def gateway_up(root: Path) -> dict:
     emails_file = gdir / "emails.txt"
     emails_file.write_text("\n".join(emails) + "\n")
     emails_file.chmod(0o600)
+    # Shared secret bridging oauth2-proxy and the router (anti-spoof). Generated
+    # per gateway start; both processes come up together so they always agree.
+    gateway_secret = secrets.token_urlsafe(32)
     env_file = gdir / "oauth2.env"
     env_file.write_text(render_gateway_oauth2_env(
-        cfg, GATEWAY_AUTH_PORT, ROUTER_PORT, redirect))
+        cfg, GATEWAY_AUTH_PORT, ROUTER_PORT, redirect, gateway_secret))
     env_file.chmod(0o600)
 
     # SECURITY NOTE: the router listens on TCP 127.0.0.1:ROUTER_PORT and trusts
@@ -93,7 +104,7 @@ def gateway_up(root: Path) -> dict:
     try:
         _run(router_build_argv(_repo_root()))
         _run_quiet(["docker", "rm", "-f", ROUTER_CONTAINER])
-        _run(router_run_argv(str(root.resolve()), ROUTER_PORT))
+        _run(router_run_argv(str(root.resolve()), ROUTER_PORT, gateway_secret))
         _run_quiet(["docker", "rm", "-f", GATEWAY_AUTH_CONTAINER])
         _run([
             "docker", "run", "-d", "--name", GATEWAY_AUTH_CONTAINER,

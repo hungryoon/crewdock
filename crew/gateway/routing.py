@@ -1,3 +1,6 @@
+import base64
+import binascii
+import hmac
 import html as _html
 
 from crew.gateway.discovery import Published
@@ -32,10 +35,35 @@ def upstream_url(port: int, tail: str) -> str:
 
 
 def proxy_request_headers(incoming: dict, prefix: str) -> dict:
+    # Authorization carries the gateway↔oauth2-proxy shared secret (Basic auth);
+    # it is consumed by the router and must NOT be forwarded to the instance.
     out = {k: v for k, v in incoming.items()
-           if k.lower() not in _HOP_BY_HOP}
+           if k.lower() not in _HOP_BY_HOP and k.lower() != "authorization"}
     out["X-Forwarded-Prefix"] = prefix
     return out
+
+
+def gateway_secret_from_headers(incoming: dict) -> str | None:
+    """Password from an ``Authorization: Basic base64(user:pass)`` header
+    (oauth2-proxy sets this via --basic-auth-password). None if absent/malformed."""
+    for k, v in incoming.items():
+        if k.lower() == "authorization" and v.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(v[6:]).decode("utf-8", "replace")
+            except (binascii.Error, ValueError):
+                return None
+            return decoded.split(":", 1)[1] if ":" in decoded else None
+    return None
+
+
+def gateway_secret_ok(incoming: dict, secret: str | None) -> bool:
+    """True when no secret is configured (check disabled) or the request carries
+    the matching shared secret — proving it arrived through oauth2-proxy rather
+    than a direct connection from a host-networked instance spoofing the email."""
+    if not secret:
+        return True
+    got = gateway_secret_from_headers(incoming)
+    return got is not None and hmac.compare_digest(got, secret)
 
 
 def ws_proxy_request_headers(incoming: dict, prefix: str, port: int) -> dict:

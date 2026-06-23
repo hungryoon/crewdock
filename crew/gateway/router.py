@@ -8,6 +8,10 @@ from aiohttp import web
 from crew.gateway import discovery, routing
 
 _EMAIL_HEADER = "X-Forwarded-Email"
+# Shared secret only oauth2-proxy injects (as the Basic-auth password). When set,
+# every request must carry it, so a host-networked instance can't reach the
+# router directly and spoof X-Forwarded-Email. Unset (dev/tests) = check off.
+_GATEWAY_SECRET = os.environ.get("CREW_GATEWAY_SECRET") or None
 
 
 def _root() -> Path:
@@ -18,7 +22,13 @@ def _published():
     return discovery.published_instances(_root())
 
 
+def _require_gateway(request: web.Request) -> None:
+    if not routing.gateway_secret_ok(dict(request.headers), _GATEWAY_SECRET):
+        raise web.HTTPForbidden(text="gateway authentication required")
+
+
 async def _index(request: web.Request) -> web.Response:
+    _require_gateway(request)
     email = request.headers.get(_EMAIL_HEADER, "")
     return web.Response(text=routing.render_index(email, _published()),
                         content_type="text/html")
@@ -29,6 +39,7 @@ def _is_websocket(request: web.Request) -> bool:
 
 
 async def _proxy(request: web.Request) -> web.StreamResponse:
+    _require_gateway(request)
     email = request.headers.get(_EMAIL_HEADER, "")
     parsed = routing.parse_instance_path(request.path)
     if parsed is None:

@@ -6,11 +6,13 @@ def test_render_gateway_oauth2_env():
     cfg = ExposeConfig("cid", "sec", "c" * 32, [])
     txt = gateway.render_gateway_oauth2_env(
         cfg, authport=9401, routerport=9400,
-        redirect="https://h.ts.net/oauth2/callback")
+        redirect="https://h.ts.net/oauth2/callback", gateway_secret="S3CRET")
     assert "OAUTH2_PROXY_PROVIDER=google" in txt
     assert "OAUTH2_PROXY_CLIENT_ID=cid" in txt
     assert "OAUTH2_PROXY_REDIRECT_URL=https://h.ts.net/oauth2/callback" in txt
     assert "OAUTH2_PROXY_UPSTREAMS=http://127.0.0.1:9400/" in txt
+    assert "OAUTH2_PROXY_BASIC_AUTH_PASSWORD=S3CRET" in txt
+    assert "OAUTH2_PROXY_PASS_BASIC_AUTH=true" in txt
     assert "OAUTH2_PROXY_HTTP_ADDRESS=127.0.0.1:9401" in txt
     assert "OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE=/etc/oauth2-proxy/emails.txt" in txt
     assert "OAUTH2_PROXY_PASS_USER_HEADERS=true" in txt
@@ -29,12 +31,14 @@ def test_router_image_and_build_argv():
 
 
 def test_router_run_argv():
-    argv = gateway.router_run_argv(root_abs="/abs/root", router_port=9400)
+    argv = gateway.router_run_argv(root_abs="/abs/root", router_port=9400,
+                                   gateway_secret="S3CRET")
     assert argv[:7] == ["docker", "run", "-d", "--pull", "never",
                         "--name", "crew-gateway-router"]
     assert "--network" in argv and "host" in argv
     assert any(a == "/abs/root/instances:/crew/instances:ro" for a in argv)
     assert "CREW_ROUTER_PORT=9400" in argv
+    assert "CREW_GATEWAY_SECRET=S3CRET" in argv
     assert "CREW_ROOT=/crew" in argv
     assert argv[-1] == gateway.ROUTER_IMAGE
 

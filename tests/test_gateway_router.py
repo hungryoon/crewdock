@@ -171,3 +171,38 @@ async def test_upstream_down_returns_502(aiohttp_client, monkeypatch):
     assert resp.status == 502
     body = await resp.text()
     assert 'href="/"' in body
+
+
+async def test_index_403_without_gateway_secret(aiohttp_client, published, monkeypatch):
+    monkeypatch.setattr(router, "_GATEWAY_SECRET", "S3CRET")
+    client = await aiohttp_client(router.build_app())
+    resp = await client.get("/", headers={"X-Forwarded-Email": "a@x.com"})
+    assert resp.status == 403
+
+
+async def test_proxy_403_without_gateway_secret(aiohttp_client, published, monkeypatch):
+    monkeypatch.setattr(router, "_GATEWAY_SECRET", "S3CRET")
+    client = await aiohttp_client(router.build_app())
+    resp = await client.get("/i/alice/", headers={"X-Forwarded-Email": "a@x.com"})
+    assert resp.status == 403
+
+
+async def test_proxy_ok_with_correct_gateway_secret(aiohttp_client, monkeypatch):
+    import base64
+    async def upstream(request):
+        return web.json_response({"ok": True, "auth": request.headers.get("Authorization", "")})
+    up = web.Application()
+    up.router.add_route("*", "/{tail:.*}", upstream)
+    up_client = await aiohttp_client(up)
+    port = up_client.server.port
+    monkeypatch.setattr(router, "_published",
+                        lambda: [Published("alice", port, ["a@x.com"])])
+    monkeypatch.setattr(router, "_GATEWAY_SECRET", "S3CRET")
+    client = await aiohttp_client(router.build_app())
+    auth = "Basic " + base64.b64encode(b"a@x.com:S3CRET").decode()
+    resp = await client.get("/i/alice/x",
+                            headers={"X-Forwarded-Email": "a@x.com", "Authorization": auth})
+    assert resp.status == 200
+    # Authorization (the gateway secret) must NOT be forwarded to the instance
+    data = await resp.json()
+    assert data["auth"] == ""

@@ -67,3 +67,32 @@ def test_render_index_empty_state():
     html = routing.render_index("a@x.com", [])
     assert "No instances" in html
     assert "a@x.com" in html
+
+
+def test_gateway_secret_ok_disabled_without_secret():
+    from crew.gateway import routing
+    assert routing.gateway_secret_ok({}, None) is True
+    assert routing.gateway_secret_ok({}, "") is True
+
+
+def test_gateway_secret_ok_matches_basic_auth_password():
+    import base64
+    from crew.gateway import routing
+    hdr = "Basic " + base64.b64encode(b"ted@x.com:S3CRET").decode()
+    assert routing.gateway_secret_ok({"Authorization": hdr}, "S3CRET") is True
+
+
+def test_gateway_secret_ok_rejects_wrong_or_missing():
+    import base64
+    from crew.gateway import routing
+    assert routing.gateway_secret_ok({}, "S3CRET") is False
+    hdr = "Basic " + base64.b64encode(b"ted@x.com:WRONG").decode()
+    assert routing.gateway_secret_ok({"Authorization": hdr}, "S3CRET") is False
+
+
+def test_proxy_request_headers_drops_authorization():
+    from crew.gateway import routing
+    out = routing.proxy_request_headers(
+        {"Authorization": "Basic abc", "X-Foo": "1"}, "/i/a")
+    assert "X-Foo" in out
+    assert not any(k.lower() == "authorization" for k in out)
