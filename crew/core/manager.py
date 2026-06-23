@@ -251,18 +251,6 @@ def logs(root: Path, name: str, follow: bool = False) -> None:
     )
 
 
-def setup(root: Path, name: str) -> None:
-    """Re-runnable interactive init (OAuth etc.). Overwrites existing creds."""
-    _require_exists(root, name)
-    meta = paths.read_meta(root, name)
-    manifest = load_manifest(_manifest_path(root, meta.get("type", "")))
-    subprocess.run(
-        compose_argv(paths.project_name(name), paths.compose_path(root, name),
-                     _env_files(root, name), ["run", "--rm", "agent"] + manifest.setup_command),
-        check=False,
-    )
-
-
 def shell_argv(root: Path, name: str) -> list[str]:
     _require_exists(root, name)
     return compose_argv(

@@ -166,15 +166,6 @@ def _lifecycle(name: str, action: str):
 
 
 @app.command()
-def setup(name: str):
-    """Run interactive setup (OAuth etc.) for an instance."""
-    try:
-        manager.setup(_root(), name)
-    except CrewError as exc:
-        _fail(exc)
-
-
-@app.command()
 def update(
     name: str = typer.Argument(None),
     all: bool = typer.Option(False, "--all", help="update every instance"),

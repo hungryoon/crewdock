@@ -66,8 +66,7 @@ crew status alice        # 대시보드 URL 표시 (예: http://127.0.0.1:9120/)
 | `crew logs`     | 컨테이너 로그 (`--follow` 로 실시간)                          |
 | `crew start` / `stop` / `restart` | 인스턴스 시작·정지·재시작                   |
 | `crew update`   | 설정 변경 반영 + 이미지 핀 관리 (옵션 상세 → 별첨 3b)         |
-| `crew setup`    | 대화형 최초 설정(OAuth 등) 실행                              |
-| `crew shell`    | 컨테이너 내부 셸 접속                                         |
+| `crew shell`    | 컨테이너 내부 셸 접속 (모델 인증도 여기서)                    |
 | `crew layers`   | 사용 가능한 읽기 전용 데이터 레이어 목록                       |
 | `crew credentials` | 자격증명 번들 목록 (키 이름만, 값은 표시 안 함)             |
 | `crew expose`   | 인스턴스를 게이트웨이에 게시 (별첨 6a 참조)                   |
@@ -75,6 +74,8 @@ crew status alice        # 대시보드 URL 표시 (예: http://127.0.0.1:9120/)
 | `crew gateway up` | 게이트웨이 시작 (별첨 6a 참조)                              |
 | `crew gateway down` | 게이트웨이 중지                                           |
 | `crew rm`       | 인스턴스 제거 (`--purge` 없으면 **데이터 보존**)              |
+
+> 💡 **모델·provider 인증(로그인)은 crewdock이 아니라 Hermes가 담당합니다.** 실행 중인 인스턴스에 `crew shell <name>` 로 들어가 `hermes login` / `hermes auth add <provider>` / `hermes model` 을 실행하세요. (별도 `crew setup` 명령은 없습니다 — 실행 중 인스턴스와 포트가 충돌하던 문제로 제거했습니다.)
 
 ### 별첨 3a — `crew create` 옵션
 

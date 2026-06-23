@@ -20,8 +20,6 @@ class Manifest:
     dashboard_host: str
     dashboard_path: str
     dashboard_port_env: str | None
-    setup_command: list[str]
-    setup_interactive: bool
     static_env: dict[str, str]
     passthrough_env: list[str]
     bot_token_env: str
@@ -50,7 +48,6 @@ def load_manifest(path: Path) -> Manifest:
     bot = creds.get("bot_token", {})
     llm = creds.get("llm", {})
     res = data.get("resources", {})
-    setup = data.get("setup", {})
 
     return Manifest(
         type=data["type"],
@@ -63,8 +60,6 @@ def load_manifest(path: Path) -> Manifest:
         dashboard_host=dash.get("host", "127.0.0.1"),
         dashboard_path=dash.get("path", "/"),
         dashboard_port_env=dash.get("port_env"),
-        setup_command=list(setup.get("command", [])),
-        setup_interactive=bool(setup.get("interactive", False)),
         static_env={k: str(v) for k, v in data.get("env", {}).items()},
         passthrough_env=list(data.get("passthrough_env", [])),
         bot_token_env=bot.get("env", ""),

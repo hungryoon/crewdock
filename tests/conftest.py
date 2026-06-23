@@ -20,9 +20,6 @@ dashboard:
   container_port: 9119
   host: 127.0.0.1
   path: /
-setup:
-  command: ["setup"]
-  interactive: true
 env:
   HERMES_DASHBOARD: "1"
   HERMES_DASHBOARD_HOST: "127.0.0.1"
