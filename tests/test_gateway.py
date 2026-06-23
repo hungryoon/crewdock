@@ -32,7 +32,9 @@ def test_router_image_and_build_argv():
 
 def test_router_run_argv():
     argv = gateway.router_run_argv(root_abs="/abs/root", router_port=9400,
-                                   gateway_secret="S3CRET")
+                                   gateway_secret="S3CRET",
+                                   broker_sock_dir_host="/abs/gw/broker",
+                                   broker_secret="BSECRET")
     assert argv[:7] == ["docker", "run", "-d", "--pull", "never",
                         "--name", "crew-gateway-router"]
     assert "--network" in argv and "host" in argv
@@ -90,6 +92,25 @@ def test_gateway_up_refuses_with_no_published(tmp_path, monkeypatch):
         lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
     with pytest.raises(ExposeError, match="no published"):
         gateway.gateway_up(tmp_path)
+
+
+def test_broker_build_and_run_argv():
+    bb = gateway.broker_build_argv("/repo")
+    assert bb[:2] == ["docker", "build"]
+    assert "-f" in bb and any("broker.Dockerfile" in a for a in bb)
+    br = gateway.broker_run_argv("/abs/gw/broker", "BSECRET")
+    assert br[:2] == ["docker", "run"]
+    assert "--name" in br and gateway.BROKER_CONTAINER in br
+    assert any(a == "/var/run/docker.sock:/var/run/docker.sock" for a in br)
+    assert any(a == "/abs/gw/broker:/run/crew-broker" for a in br)
+    assert "CREW_BROKER_SECRET=BSECRET" in br
+
+
+def test_router_run_argv_gets_broker_wiring():
+    argv = gateway.router_run_argv("/abs/root", 9400, "S", "/abs/gw/broker", "BSECRET")
+    assert any(a == "/abs/gw/broker:/run/crew-broker" for a in argv)
+    assert "CREW_BROKER_SECRET=BSECRET" in argv
+    assert "CREW_BROKER_SOCK=/run/crew-broker/broker.sock" in argv
 
 
 def test_gateway_up_rolls_back_on_run_failure(tmp_path, monkeypatch):

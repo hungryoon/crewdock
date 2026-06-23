@@ -16,6 +16,10 @@ GATEWAY_AUTH_CONTAINER = "crew-gateway-auth"
 ROUTER_PORT = 9400
 GATEWAY_AUTH_PORT = 9401
 GATEWAY_HTTPS_PORT = 443
+BROKER_IMAGE = "crewdock-gateway-broker:local"
+BROKER_CONTAINER = "crew-gateway-broker"
+BROKER_SOCK_DIR_CONTAINER = "/run/crew-broker"
+BROKER_SOCK = "/run/crew-broker/broker.sock"
 
 
 def render_gateway_oauth2_env(cfg, authport: int, routerport: int,
@@ -50,15 +54,37 @@ def router_build_argv(repo_root: str) -> list[str]:
     ]
 
 
-def router_run_argv(root_abs: str, router_port: int,
-                    gateway_secret: str) -> list[str]:
+def broker_build_argv(repo_root: str) -> list[str]:
+    repo_root = str(repo_root)
+    return [
+        "docker", "build", "-t", BROKER_IMAGE,
+        "-f", f"{repo_root}/crew/gateway/broker.Dockerfile", repo_root,
+    ]
+
+
+def broker_run_argv(sock_dir_host: str, broker_secret: str) -> list[str]:
+    return [
+        "docker", "run", "-d", "--pull", "never", "--name", BROKER_CONTAINER,
+        "--restart", "unless-stopped",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "-v", f"{sock_dir_host}:{BROKER_SOCK_DIR_CONTAINER}",
+        "-e", f"CREW_BROKER_SECRET={broker_secret}",
+        BROKER_IMAGE,
+    ]
+
+
+def router_run_argv(root_abs: str, router_port: int, gateway_secret: str,
+                    broker_sock_dir_host: str, broker_secret: str) -> list[str]:
     root_abs = str(root_abs)
     return [
         "docker", "run", "-d", "--pull", "never", "--name", ROUTER_CONTAINER,
         "--network", "host", "--restart", "unless-stopped",
         "-v", f"{root_abs}/instances:/crew/instances:ro",
+        "-v", f"{broker_sock_dir_host}:{BROKER_SOCK_DIR_CONTAINER}",
         "-e", f"CREW_ROUTER_PORT={router_port}",
         "-e", f"CREW_GATEWAY_SECRET={gateway_secret}",
+        "-e", f"CREW_BROKER_SECRET={broker_secret}",
+        "-e", f"CREW_BROKER_SOCK={BROKER_SOCK}",
         "-e", "CREW_ROOT=/crew",
         ROUTER_IMAGE,
     ]
@@ -88,6 +114,10 @@ def gateway_up(root: Path) -> dict:
     # Shared secret bridging oauth2-proxy and the router (anti-spoof). Generated
     # per gateway start; both processes come up together so they always agree.
     gateway_secret = secrets.token_urlsafe(32)
+    broker_secret = secrets.token_urlsafe(32)
+    broker_dir = gdir / "broker"
+    broker_dir.mkdir(exist_ok=True)
+    broker_dir.chmod(0o711)   # non-root broker/router uids traverse to the socket
     env_file = gdir / "oauth2.env"
     env_file.write_text(render_gateway_oauth2_env(
         cfg, GATEWAY_AUTH_PORT, ROUTER_PORT, redirect, gateway_secret))
@@ -103,8 +133,12 @@ def gateway_up(root: Path) -> dict:
     # ("unsupported protocol scheme unix" -> 502), which breaks chat/events.
     try:
         _run(router_build_argv(_repo_root()))
+        _run(broker_build_argv(_repo_root()))
+        _run_quiet(["docker", "rm", "-f", BROKER_CONTAINER])
+        _run(broker_run_argv(str(broker_dir.resolve()), broker_secret))
         _run_quiet(["docker", "rm", "-f", ROUTER_CONTAINER])
-        _run(router_run_argv(str(root.resolve()), ROUTER_PORT, gateway_secret))
+        _run(router_run_argv(str(root.resolve()), ROUTER_PORT, gateway_secret,
+                             str(broker_dir.resolve()), broker_secret))
         _run_quiet(["docker", "rm", "-f", GATEWAY_AUTH_CONTAINER])
         _run([
             "docker", "run", "-d", "--name", GATEWAY_AUTH_CONTAINER,
@@ -118,6 +152,7 @@ def gateway_up(root: Path) -> dict:
         _run_quiet(serve_off_argv(GATEWAY_HTTPS_PORT))
         _run_quiet(["docker", "rm", "-f", GATEWAY_AUTH_CONTAINER])
         _run_quiet(["docker", "rm", "-f", ROUTER_CONTAINER])
+        _run_quiet(["docker", "rm", "-f", BROKER_CONTAINER])
         shutil.rmtree(gdir, ignore_errors=True)
         raise
     return {"url": f"https://{host}/", "redirect_uri": redirect}
@@ -127,6 +162,7 @@ def gateway_down(root: Path) -> None:
     _run_quiet(serve_off_argv(GATEWAY_HTTPS_PORT))
     _run_quiet(["docker", "rm", "-f", GATEWAY_AUTH_CONTAINER])
     _run_quiet(["docker", "rm", "-f", ROUTER_CONTAINER])
+    _run_quiet(["docker", "rm", "-f", BROKER_CONTAINER])
     gdir = paths.gateway_dir(root)
     if gdir.exists():
         shutil.rmtree(gdir, ignore_errors=True)
