@@ -75,6 +75,12 @@ async def _proxy_http(request, port, tail, prefix) -> web.StreamResponse:
 
 async def _proxy_ws(request, port, tail, prefix) -> web.StreamResponse:
     ws_url = f"ws://127.0.0.1:{port}{tail}"
+    if request.query_string:
+        # The dashboard passes its WS auth credential (?token= / ?ticket=) and
+        # the channel id (?channel=) in the query string — forward it, or the
+        # instance rejects the upgrade (no_credential -> 403) and the chat /
+        # events feed never connect.
+        ws_url += f"?{request.query_string}"
     headers = routing.ws_proxy_request_headers(dict(request.headers), prefix, port)
     server_ws = web.WebSocketResponse()
     await server_ws.prepare(request)

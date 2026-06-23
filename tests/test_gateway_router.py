@@ -109,6 +109,36 @@ async def test_ws_proxy_rewrites_origin_to_upstream(aiohttp_client, monkeypatch)
     assert seen["origin"] == f"http://127.0.0.1:{port}"
 
 
+async def test_ws_proxy_forwards_query_string(aiohttp_client, monkeypatch):
+    # The dashboard passes its WS auth credential (?token=/?ticket=) and the
+    # channel id (?channel=) in the query string. The router must forward it or
+    # Hermes rejects the upgrade (no_credential -> 403) and chat/events never
+    # connect.
+    seen = {}
+
+    async def ws_upstream(request):
+        seen["qs"] = request.query_string
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+        async for msg in ws:
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                await ws.send_str("ok")
+        return ws
+    up = web.Application()
+    up.router.add_route("GET", "/{tail:.*}", ws_upstream)
+    up_client = await aiohttp_client(up)
+    port = up_client.server.port
+    monkeypatch.setattr(router, "_published",
+                        lambda: [Published("alice", port, ["a@x.com"])])
+    client = await aiohttp_client(router.build_app())
+    ws = await client.ws_connect("/i/alice/api/pty?token=secret&channel=c1",
+                                 headers={"X-Forwarded-Email": "a@x.com"})
+    await ws.send_str("hi")
+    await ws.receive()
+    await ws.close()
+    assert seen["qs"] == "token=secret&channel=c1"
+
+
 async def test_http_proxy_passes_compressed_body_unchanged(aiohttp_client, monkeypatch):
     import gzip
     payload = gzip.compress(b"hello world")
