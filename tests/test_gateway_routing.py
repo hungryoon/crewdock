@@ -18,6 +18,14 @@ def test_authorize():
     assert routing.authorize("a@x.com", "ghost", pubs) is False  # unknown
 
 
+def test_authorize_empty_whitelist_is_fail_closed():
+    # The canonical "hidden" state under publish-by-default: an instance with an
+    # empty CREW_ALLOWED_EMAILS is reachable by no one (no marker gate anymore).
+    pubs = [Published("alice", 9120, [])]
+    assert routing.authorize("a@x.com", "alice", pubs) is False
+    assert routing.authorize("", "alice", pubs) is False
+
+
 def test_upstream_url():
     assert routing.upstream_url(9120, "/foo") == "http://127.0.0.1:9120/foo"
     assert routing.upstream_url(9120, "/") == "http://127.0.0.1:9120/"
