@@ -575,3 +575,54 @@ def test_status_reports_timezone(root, calls, monkeypatch):
                    creds={"TELEGRAM_BOT_TOKEN": "t"}, tz="Europe/London")
     monkeypatch.setattr(manager, "_compose_state", lambda root, name: "running")
     assert manager.status(root, "alice").timezone == "Europe/London"
+
+
+def test_create_writes_stable_session_token(root, calls):
+    from crew.core.creds import parse_env_file
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    env = parse_env_file(paths.instance_env_path(root, "alice"))
+    assert len(env.get("HERMES_DASHBOARD_SESSION_TOKEN", "")) >= 20
+
+
+def test_session_token_passed_through_not_inlined(root, calls):
+    from crew.core.creds import parse_env_file
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    tok = parse_env_file(paths.instance_env_path(root, "alice"))["HERMES_DASHBOARD_SESSION_TOKEN"]
+    compose = paths.compose_path(root, "alice").read_text()
+    assert "HERMES_DASHBOARD_SESSION_TOKEN=${HERMES_DASHBOARD_SESSION_TOKEN}" in compose
+    assert tok not in compose
+
+
+def test_each_instance_gets_distinct_session_token(root, calls):
+    from crew.core.creds import parse_env_file
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    manager.create(root, "bob", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    a = parse_env_file(paths.instance_env_path(root, "alice"))["HERMES_DASHBOARD_SESSION_TOKEN"]
+    b = parse_env_file(paths.instance_env_path(root, "bob"))["HERMES_DASHBOARD_SESSION_TOKEN"]
+    assert a != b
+
+
+def test_update_adds_session_token_to_legacy_instance(root, calls):
+    from crew.core.creds import parse_env_file
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    env_path = paths.instance_env_path(root, "alice")
+    lines = [ln for ln in env_path.read_text().splitlines()
+             if not ln.startswith("HERMES_DASHBOARD_SESSION_TOKEN=")]
+    env_path.write_text("\n".join(lines) + "\n")
+    assert "HERMES_DASHBOARD_SESSION_TOKEN" not in parse_env_file(env_path)
+    manager.update(root, "alice")
+    assert "HERMES_DASHBOARD_SESSION_TOKEN" in parse_env_file(env_path)
+
+
+def test_update_keeps_existing_session_token(root, calls):
+    from crew.core.creds import parse_env_file
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    before = parse_env_file(paths.instance_env_path(root, "alice"))["HERMES_DASHBOARD_SESSION_TOKEN"]
+    manager.update(root, "alice")
+    after = parse_env_file(paths.instance_env_path(root, "alice"))["HERMES_DASHBOARD_SESSION_TOKEN"]
+    assert before == after

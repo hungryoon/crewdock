@@ -1,4 +1,5 @@
 import os
+import secrets
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -62,6 +63,11 @@ def _write_instance_env(root: Path, name: str, port: int, creds: dict,
             lines.append(f"{host_user_env['gid']}={gid}")
     for key, value in creds.items():
         lines.append(f"{key}={value}")
+    # Stable per-instance dashboard session token. The Hermes dashboard otherwise
+    # mints a fresh random token on every (re)start, silently invalidating any
+    # already-loaded browser SPA (events feed / chat then 403). Pinning it here
+    # keeps the token stable across restarts/updates.
+    lines.append(f"HERMES_DASHBOARD_SESSION_TOKEN={_new_session_token()}")
     # Pre-seed the expose whitelist key (commented out, so inactive) so enabling
     # `crew expose` is just "uncomment and fill in" — no need to recall the key.
     lines.append("")
@@ -69,6 +75,22 @@ def _write_instance_env(root: Path, name: str, port: int, creds: dict,
     lines.append("# CREW_ALLOWED_EMAILS=you@example.com")
     paths.instance_env_path(root, name).write_text("\n".join(lines) + "\n")
     paths.instance_env_path(root, name).chmod(0o600)
+
+
+def _new_session_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _ensure_session_token(root: Path, name: str) -> None:
+    """Add a stable HERMES_DASHBOARD_SESSION_TOKEN to an instance that predates
+    this feature, so existing instances stop losing dashboard auth on restart.
+    No-op when one is already present."""
+    from .creds import parse_env_file
+    env_path = paths.instance_env_path(root, name)
+    if "HERMES_DASHBOARD_SESSION_TOKEN" in parse_env_file(env_path):
+        return
+    with env_path.open("a") as f:
+        f.write(f"HERMES_DASHBOARD_SESSION_TOKEN={_new_session_token()}\n")
 
 
 def _validate_layers(root: Path, layers: list[str]) -> None:
@@ -298,6 +320,7 @@ def update(root: Path, name: str, backup: bool = False,
     if len(_exclusive) > 1:
         raise CrewError(
             "choose only one of --image / --rollback / --to-default")
+    _ensure_session_token(root, name)
     if backup:
         src = paths.instance_dir(root, name) / "data"
         dst = paths.instance_dir(root, name) / f"data.bak-{_stamp()}"
