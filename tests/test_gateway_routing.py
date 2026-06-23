@@ -154,3 +154,29 @@ def test_fmt_created():
     assert routing.fmt_created("20260623T024431Z") == "2026-06-23"
     assert routing.fmt_created("") == ""
     assert routing.fmt_created("garbage") == ""
+
+
+def test_detail_kvs_includes_present_fields_only():
+    from crew.gateway import routing
+    c = {"type": "hermes", "image": "v1", "port": 9120, "timezone": "UTC",
+         "created": "2026-06-23", "layers": ["k"], "credentials": ["anthropic"]}
+    kvs = routing._detail_kvs(c)
+    assert "hermes" in kvs and "v1" in kvs and ":9120" in kvs and "UTC" in kvs
+    assert "2026-06-23" in kvs
+    assert "layers: k" in kvs and "creds: anthropic" in kvs
+    assert routing._detail_kvs({"name": "x"}) == []
+
+
+def test_render_index_list_shows_details_and_rollback():
+    from crew.gateway import routing
+    cards = [{"name": "alice", "up": True, "image": "v1", "timezone": "UTC",
+              "created": "2026-06-23", "type": "hermes", "port": 9120,
+              "layers": ["knowledge"], "credentials": ["anthropic"], "rollback": True}]
+    html = routing.render_index("a@x.com", cards)
+    assert 'class="list"' in html
+    assert 'class="row"' in html
+    assert ":9120" in html
+    assert "hermes" in html
+    assert "layers: knowledge" in html
+    assert "creds: anthropic" in html
+    assert "rollback" in html

@@ -104,24 +104,46 @@ def ws_proxy_request_headers(incoming: dict, prefix: str, port: int) -> dict:
     return out
 
 
+def _detail_kvs(c: dict) -> list[str]:
+    """Ordered, HTML-escaped key/value chips for an instance row (only present
+    fields). Used by render_index; pure for testability."""
+    kvs: list[str] = []
+    if c.get("type"):
+        kvs.append(_html.escape(c["type"]))
+    if c.get("image"):
+        kvs.append(_html.escape(c["image"]))
+    if c.get("port"):
+        kvs.append(f':{int(c["port"])}')
+    if c.get("timezone"):
+        kvs.append(_html.escape(c["timezone"]))
+    if c.get("created"):
+        kvs.append(_html.escape(c["created"]))
+    if c.get("layers"):
+        kvs.append("layers: " + _html.escape(", ".join(c["layers"])))
+    if c.get("credentials"):
+        kvs.append("creds: " + _html.escape(", ".join(c["credentials"])))
+    return kvs
+
+
 def render_index(email: str, cards: list[dict]) -> str:
     if cards:
-        rows = "\n".join(
-            f'      <a class="card" href="/i/{_html.escape(c["name"])}/" '
-            f'data-name="{_html.escape(c["name"])}">\n'
-            f'        <div class="top">'
-            f'<span class="dot {"up" if c["up"] else "down"}"></span>'
-            f'<span class="name">{_html.escape(c["name"])}</span>'
-            f'<span class="ver">{_html.escape(c.get("image", ""))}</span></div>\n'
-            f'        <div class="meta">'
-            f'<span class="state">{"running" if c["up"] else "down"}</span>'
-            f'<span class="sub">{_html.escape(c.get("timezone", ""))}'
-            f'{" · " + _html.escape(c["created"]) if c.get("created") else ""}</span>'
-            f'<span class="go">open dashboard &rarr;</span></div>\n'
-            f'      </a>'
-            for c in cards
-        )
-        body = f'<div class="grid">\n{rows}\n    </div>'
+        def row(c: dict) -> str:
+            name = _html.escape(c["name"])
+            chips = "".join(f'<span class="kv">{kv}</span>' for kv in _detail_kvs(c))
+            if c.get("rollback"):
+                chips += '<span class="kv rb">&#8629; rollback</span>'
+            return (
+                f'      <a class="row" href="/i/{name}/" data-name="{name}">\n'
+                f'        <div class="head">'
+                f'<span class="dot {"up" if c["up"] else "down"}"></span>'
+                f'<span class="name">{name}</span>'
+                f'<span class="state">{"running" if c["up"] else "down"}</span>'
+                f'<span class="go">open dashboard &rarr;</span></div>\n'
+                f'        <div class="detail">{chips}</div>\n'
+                f'      </a>'
+            )
+        rows = "\n".join(row(c) for c in cards)
+        body = f'<div class="list">\n{rows}\n    </div>'
     else:
         body = '<p class="empty">No instances are available for your account.</p>'
     return f"""\
@@ -148,21 +170,21 @@ def render_index(email: str, cards: list[dict]) -> str:
   h1 {{ margin:0; font-size:18px; font-weight:600; letter-spacing:-0.01em; }}
   h1 .p {{ color:var(--accent); }}
   .who {{ font-size:12px; color:var(--muted); }}
-  .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }}
-  .card {{ display:flex; flex-direction:column; gap:10px; padding:14px 16px;
+  .list {{ display:flex; flex-direction:column; gap:10px; }}
+  .row {{ display:flex; flex-direction:column; gap:8px; padding:13px 16px;
     border:1px solid var(--border); border-radius:10px; background:var(--panel);
-    text-decoration:none; color:inherit; transition:border-color .12s, transform .12s; }}
-  .card:hover {{ border-color:var(--accent); transform:translateY(-1px); }}
-  .top {{ display:flex; align-items:center; gap:8px; }}
+    text-decoration:none; color:inherit; transition:border-color .12s; }}
+  .row:hover {{ border-color:var(--accent); }}
+  .head {{ display:flex; align-items:center; gap:10px; }}
   .dot {{ width:8px; height:8px; border-radius:50%; flex:none; background:var(--down); }}
   .dot.up {{ background:var(--accent); box-shadow:0 0 6px var(--accent); }}
   .name {{ font-weight:600; font-size:15px; }}
-  .ver {{ margin-left:auto; font-size:11px; color:var(--muted);
-    border:1px solid var(--border); border-radius:5px; padding:1px 6px; }}
-  .meta {{ display:flex; flex-direction:column; gap:3px; font-size:12px; }}
-  .state {{ color:var(--muted); }}
-  .sub {{ color:var(--muted); }}
-  .go {{ color:var(--accent2); opacity:.8; font-size:12px; }}
+  .state {{ font-size:12px; color:var(--muted); }}
+  .go {{ margin-left:auto; color:var(--accent2); opacity:.85; font-size:12px; }}
+  .detail {{ display:flex; flex-wrap:wrap; gap:6px; }}
+  .kv {{ font-size:11px; color:var(--muted);
+    border:1px solid var(--border); border-radius:5px; padding:1px 7px; }}
+  .kv.rb {{ color:var(--accent2); border-color:var(--accent2); opacity:.85; }}
   .empty {{ color:var(--muted); }}
 </style>
 </head>
@@ -180,9 +202,9 @@ def render_index(email: str, cards: list[dict]) -> str:
       const r = await fetch("/_status.json", {{credentials:"same-origin"}});
       if (!r.ok) return;
       for (const c of await r.json()) {{
-        const el = document.querySelector('.card[data-name="'+CSS.escape(c.name)+'"] .dot');
+        const el = document.querySelector('.row[data-name="'+CSS.escape(c.name)+'"] .dot');
         if (el) el.className = "dot " + (c.up ? "up" : "down");
-        const st = document.querySelector('.card[data-name="'+CSS.escape(c.name)+'"] .state');
+        const st = document.querySelector('.row[data-name="'+CSS.escape(c.name)+'"] .state');
         if (st) st.textContent = c.up ? "running" : "down";
       }}
     }} catch (e) {{}}

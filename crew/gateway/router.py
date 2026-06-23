@@ -79,6 +79,11 @@ async def _gather_cards(email: str) -> list[dict]:
             "image": routing.short_image(meta.get("image", "")),
             "timezone": meta.get("timezone", ""),
             "created": routing.fmt_created(meta.get("created_at", "")),
+            "type": meta.get("type", ""),
+            "port": p.port,
+            "layers": list(meta.get("layers", []) or []),
+            "credentials": list(meta.get("credentials", []) or []),
+            "rollback": bool(meta.get("previous_image")),
         }
 
     return list(await asyncio.gather(*[build(p) for p in pubs]))
