@@ -88,14 +88,14 @@ def test_gateway_down_invokes_core(monkeypatch, root):
     assert called == [True]
 
 
-def test_expose_marks_publish(monkeypatch, root):
+def test_gateway_reload_invokes_core(monkeypatch, root):
     _patch(monkeypatch, root)
-    from crew.core import expose as expose_mod
+    from crew.core import gateway
     called = []
-    monkeypatch.setattr(expose_mod, "expose", lambda r, name: called.append(name))
-    result = runner.invoke(cli.app, ["expose", "alice"])
+    monkeypatch.setattr(gateway, "gateway_reload", lambda r: called.append(True))
+    result = runner.invoke(cli.app, ["gateway", "reload"])
     assert result.exit_code == 0
-    assert called == ["alice"]
+    assert called == [True]
 
 
 def test_create_passes_credentials(monkeypatch, root):

@@ -6,7 +6,6 @@ from typing import NoReturn
 import typer
 
 from .core import manager
-from .core import expose as expose_mod
 from .core import gateway as gateway_mod
 from .core import credentials as credentials_mod
 from .core.errors import CrewError
@@ -84,24 +83,14 @@ def gateway_down():
     typer.echo("gateway down")
 
 
-@app.command()
-def expose(name: str):
-    """Publish an instance to the gateway."""
+@gateway_app.command("reload")
+def gateway_reload():
+    """Refresh the gateway allowlist after editing CREW_ALLOWED_EMAILS."""
     try:
-        expose_mod.expose(_root(), name)
+        gateway_mod.gateway_reload(_root())
     except CrewError as exc:
         _fail(exc)
-    typer.echo(f"published {name} to the gateway")
-
-
-@app.command()
-def unexpose(name: str):
-    """Unpublish an instance from the gateway."""
-    try:
-        expose_mod.unexpose(_root(), name)
-    except CrewError as exc:
-        _fail(exc)
-    typer.echo(f"unpublished {name}")
+    typer.echo("gateway allowlist reloaded")
 
 
 @app.command(name="list")
