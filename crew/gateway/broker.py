@@ -53,16 +53,22 @@ async def _stream(ws: web.WebSocketResponse, argv: list[str]) -> None:
 
     code: int
     try:
-        await asyncio.wait_for(asyncio.gather(pump(), proc.wait()), timeout=_TIMEOUT)
-        code = proc.returncode or 0
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
+        try:
+            await asyncio.wait_for(asyncio.gather(pump(), proc.wait()),
+                                   timeout=_TIMEOUT)
+            code = proc.returncode or 0
+        except asyncio.TimeoutError:
+            if not ws.closed:
+                await ws.send_json({"line": "timed out waiting for sign-in"})
+            code = 124
         if not ws.closed:
-            await ws.send_json({"line": "timed out waiting for sign-in"})
-        code = 124
-    if not ws.closed:
-        await ws.send_json({"done": True, "code": code})
+            await ws.send_json({"done": True, "code": code})
+    finally:
+        # Reap the child on ANY exit path (timeout, or e.g. a send raising on a
+        # reset connection) so a dropped WS never orphans a `docker exec`.
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
 
 
 async def _exec(request: web.Request) -> web.StreamResponse:
