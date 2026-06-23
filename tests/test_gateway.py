@@ -61,7 +61,6 @@ def _published(root, name="alice", port=9120, emails="a@x.com"):
     d = root / "instances" / name
     d.mkdir(parents=True, exist_ok=True)
     (d / "instance.env").write_text(f"CREW_PORT={port}\nCREW_ALLOWED_EMAILS={emails}\n")
-    (d / "exposed").write_text("")
 
 
 def test_gateway_up_builds_runs_and_serves(tmp_path, monkeypatch):
@@ -86,11 +85,11 @@ def test_gateway_up_builds_runs_and_serves(tmp_path, monkeypatch):
     assert "a@x.com" in emails
 
 
-def test_gateway_up_refuses_with_no_published(tmp_path, monkeypatch):
+def test_gateway_up_refuses_without_whitelist(tmp_path, monkeypatch):
     _full_shared(tmp_path)
     monkeypatch.setattr(gateway, "_run_capture",
         lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
-    with pytest.raises(ExposeError, match="no published"):
+    with pytest.raises(ExposeError, match="whitelist"):
         gateway.gateway_up(tmp_path)
 
 
@@ -139,3 +138,17 @@ def test_gateway_up_rolls_back_on_run_failure(tmp_path, monkeypatch):
                for q in quiet)
     # gdir is cleaned up on failure
     assert not gdir.exists()
+
+
+def test_gateway_reload_raises_when_down(tmp_path, monkeypatch):
+    monkeypatch.setattr(gateway, "gateway_running", lambda: False)
+    with pytest.raises(ExposeError, match="not running"):
+        gateway.gateway_reload(tmp_path)
+
+
+def test_gateway_reload_regenerates_when_up(tmp_path, monkeypatch):
+    monkeypatch.setattr(gateway, "gateway_running", lambda: True)
+    regen = []
+    monkeypatch.setattr(gateway, "regenerate_union_emails", lambda r: regen.append(r))
+    gateway.gateway_reload(tmp_path)
+    assert regen == [tmp_path]

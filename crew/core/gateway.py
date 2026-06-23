@@ -98,10 +98,12 @@ def _repo_root() -> str:
 def gateway_up(root: Path) -> dict:
     cfg = load_shared_oauth(root)
     check_tailscale_up(run_capture=_run_capture)
-    pubs = discovery.published_instances(root)
-    if not pubs:
-        raise ExposeError("no published instances — `crew expose <name>` first.")
     emails = discovery.union_emails(root)
+    if not emails:
+        raise ExposeError(
+            "no instance has a whitelist — set CREW_ALLOWED_EMAILS "
+            "(comma-separated Google accounts) in instances/<name>/instance.env "
+            "for at least one instance first.")
     host = tailnet_dns_name(run_capture=_run_capture)
     redirect = f"https://{host}/oauth2/callback"
 
@@ -173,6 +175,15 @@ def regenerate_union_emails(root: Path) -> None:
     f = paths.gateway_dir(root) / "emails.txt"
     if f.exists():
         f.write_text("\n".join(discovery.union_emails(root)) + "\n")
+
+
+def gateway_reload(root: Path) -> None:
+    """Re-derive the SSO allowlist from current instance whitelists. Use after
+    hand-editing CREW_ALLOWED_EMAILS so oauth2-proxy picks up added/removed
+    accounts (it watches emails.txt)."""
+    if not gateway_running():
+        raise ExposeError("gateway is not running — `crew gateway up` first.")
+    regenerate_union_emails(root)
 
 
 def gateway_running(run_capture=_run_capture) -> bool:
