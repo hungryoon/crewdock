@@ -89,6 +89,12 @@ def _require_gateway(request: web.Request) -> None:
         raise web.HTTPForbidden(text="gateway authentication required")
 
 
+async def _status_json(request: web.Request) -> web.Response:
+    _require_gateway(request)
+    email = request.headers.get(_EMAIL_HEADER, "")
+    return web.json_response(await _gather_cards(email))
+
+
 async def _index(request: web.Request) -> web.Response:
     _require_gateway(request)
     email = request.headers.get(_EMAIL_HEADER, "")
@@ -182,6 +188,7 @@ def build_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", _index)
     app.router.add_get("/_assets/{name}", _assets)
+    app.router.add_get("/_status.json", _status_json)
     app.router.add_route("*", "/i/{tail:.*}", _proxy)
     return app
 

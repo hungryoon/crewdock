@@ -208,6 +208,40 @@ async def test_proxy_ok_with_correct_gateway_secret(aiohttp_client, monkeypatch)
     assert data["auth"] == ""
 
 
+async def test_status_json_returns_authorized_cards(aiohttp_client, monkeypatch):
+    async def ok(request):
+        return web.Response(text="x")
+    up = web.Application(); up.router.add_route("GET", "/", ok)
+    up_client = await aiohttp_client(up)
+    port = up_client.server.port
+    monkeypatch.setattr(router, "_published",
+                        lambda: [Published("alice", port, ["a@x.com"])])
+    monkeypatch.setattr(router, "_probe_cache", {})
+    client = await aiohttp_client(router.build_app())
+    resp = await client.get("/_status.json", headers={"X-Forwarded-Email": "a@x.com"})
+    assert resp.status == 200
+    data = await resp.json()
+    assert [c["name"] for c in data] == ["alice"]
+    assert data[0]["up"] is True
+
+
+async def test_status_json_hides_unauthorized(aiohttp_client, monkeypatch):
+    monkeypatch.setattr(router, "_published",
+                        lambda: [Published("alice", 9120, ["a@x.com"])])
+    monkeypatch.setattr(router, "_probe_cache", {})
+    client = await aiohttp_client(router.build_app())
+    resp = await client.get("/_status.json", headers={"X-Forwarded-Email": "nobody@z.com"})
+    assert resp.status == 200
+    assert await resp.json() == []
+
+
+async def test_status_json_403_without_gateway_secret(aiohttp_client, monkeypatch):
+    monkeypatch.setattr(router, "_GATEWAY_SECRET", "S3CRET")
+    client = await aiohttp_client(router.build_app())
+    resp = await client.get("/_status.json", headers={"X-Forwarded-Email": "a@x.com"})
+    assert resp.status == 403
+
+
 async def test_assets_serves_font_without_gateway_secret(aiohttp_client, monkeypatch):
     monkeypatch.setattr(router, "_GATEWAY_SECRET", "S3CRET")   # gate ON
     client = await aiohttp_client(router.build_app())
