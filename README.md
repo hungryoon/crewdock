@@ -178,6 +178,9 @@ openai                OPENAI_API_KEY
 대시보드는 기본적으로 루프백 전용입니다. 외부(팀·고객 등)에 안전하게 열어 주려면
 **게이트웨이**를 씁니다 — Tailscale VPN + Google OAuth SSO가 앞단에서 인증을 처리합니다.
 
+> 📘 여러 사용자에게 각자 대시보드를 나눠주는 전체 절차(인프라 셋업 → 사용자 추가 →
+> 운영 → 보안 모델 → 트러블슈팅)는 **[docs/multi-user.md](docs/multi-user.md)** 참고.
+
 ```bash
 # 1) 게이트웨이 시작 (최초 한 번)
 crew gateway up
