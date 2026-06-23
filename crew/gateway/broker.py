@@ -30,3 +30,72 @@ def build_argv(instance: str, action: str, provider: str) -> list[str]:
         raise ValueError("invalid provider")
     return ["docker", "exec", "-i", f"crew-{instance}",
             "hermes", "auth", "add", provider, "--no-browser"]
+
+
+def _secret_ok(request: web.Request) -> bool:
+    if not _SECRET:
+        return True
+    got = request.headers.get("X-Crew-Broker-Secret", "")
+    return hmac.compare_digest(got, _SECRET)
+
+
+async def _stream(ws: web.WebSocketResponse, argv: list[str]) -> None:
+    proc = await asyncio.create_subprocess_exec(
+        *argv, stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+
+    async def pump():
+        assert proc.stdout is not None
+        async for raw in proc.stdout:
+            line = strip_ansi(raw.decode("utf-8", "replace")).rstrip("\n")
+            if not ws.closed:
+                await ws.send_json({"line": line})
+
+    code: int
+    try:
+        await asyncio.wait_for(asyncio.gather(pump(), proc.wait()), timeout=_TIMEOUT)
+        code = proc.returncode or 0
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        if not ws.closed:
+            await ws.send_json({"line": "timed out waiting for sign-in"})
+        code = 124
+    if not ws.closed:
+        await ws.send_json({"done": True, "code": code})
+
+
+async def _exec(request: web.Request) -> web.StreamResponse:
+    if not _secret_ok(request):
+        return web.Response(status=403, text="forbidden")
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    instance = request.query.get("instance", "")
+    action = request.query.get("action", "add")
+    provider = request.query.get("provider", "")
+    try:
+        argv = build_argv(instance, action, provider)
+    except ValueError as exc:
+        await ws.send_json({"line": f"error: {exc}"})
+        await ws.send_json({"done": True, "code": 2})
+        await ws.close()
+        return ws
+    key = (instance, provider)
+    if key in _active:
+        await ws.send_json({"line": "a setup is already running for this instance"})
+        await ws.send_json({"done": True, "code": 1})
+        await ws.close()
+        return ws
+    _active.add(key)
+    try:
+        await _stream(ws, argv)
+    finally:
+        _active.discard(key)
+    await ws.close()
+    return ws
+
+
+def build_app() -> web.Application:
+    app = web.Application()
+    app.router.add_get("/exec", _exec)
+    return app
