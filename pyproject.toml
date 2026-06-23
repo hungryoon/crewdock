@@ -14,6 +14,7 @@ dependencies = [
 [project.scripts]
 crew = "crew.cli:app"
 crew-gateway-router = "crew.gateway.router:main"
+crew-gateway-broker = "crew.gateway.broker:main"
 
 [dependency-groups]
 dev = ["pytest>=8.0", "pytest-aiohttp>=1.0"]

@@ -99,3 +99,16 @@ def build_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/exec", _exec)
     return app
+
+
+def main() -> None:
+    async def _serve() -> None:
+        runner = web.AppRunner(build_app())
+        await runner.setup()
+        if os.path.exists(_SOCK):
+            os.unlink(_SOCK)
+        site = web.UnixSite(runner, _SOCK)
+        await site.start()
+        os.chmod(_SOCK, 0o666)   # router connects from a possibly-different uid
+        await asyncio.Event().wait()
+    asyncio.run(_serve())
