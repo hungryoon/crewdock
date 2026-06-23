@@ -146,12 +146,10 @@ def render_index(email: str, cards: list[dict]) -> str:
                 f'<span class="name">{name}</span>'
                 f'<span class="state">{"running" if c["up"] else "down"}</span>'
                 f'{llm}'
+                f'<button class="setup" data-setup="{name}">&#9881; model</button>'
+                f'<a class="go" href="/i/{name}/">dashboard</a>'
                 f'</div>\n'
                 f'        <div class="detail">{chips}</div>\n'
-                f'        <div class="actions">'
-                f'<a class="go" href="/i/{name}/">open dashboard &rarr;</a>'
-                f'<button class="setup" data-setup="{name}">&#9881; model setup</button>'
-                f'</div>\n'
                 f'      </div>'
             )
         rows = "\n".join(row(c) for c in cards)
@@ -195,19 +193,16 @@ def render_index(email: str, cards: list[dict]) -> str:
   .llm {{ font-size:11px; border:1px solid var(--border); border-radius:5px; padding:1px 7px; }}
   .llm.ok {{ color:var(--accent); border-color:var(--accent); }}
   .llm.no {{ color:#e07a8a; border-color:#5a3a42; }}
-  .actions {{ display:flex; gap:8px; justify-content:flex-end; align-items:center;
-    margin-top:2px; }}
-  .go {{ text-decoration:none; font-size:12px; font-weight:600; color:#0e1116;
-    background:var(--accent); border-radius:6px; padding:4px 11px; }}
-  .go:hover {{ filter:brightness(1.08); }}
+  .go {{ margin-left:8px; color:var(--accent2); font-size:12px; text-decoration:none; }}
+  .go:hover {{ text-decoration:underline; }}
   .detail {{ display:flex; flex-wrap:wrap; gap:6px; }}
   .kv {{ font-size:11px; color:var(--muted);
     border:1px solid var(--border); border-radius:5px; padding:1px 7px; }}
   .kv.rb {{ color:var(--accent2); border-color:var(--accent2); opacity:.85; }}
   .empty {{ color:var(--muted); }}
-  .setup {{ font:inherit; font-size:12px; cursor:pointer;
+  .setup {{ margin-left:auto; font:inherit; font-size:11px; cursor:pointer;
     color:var(--fg); background:transparent; border:1px solid var(--border);
-    border-radius:6px; padding:4px 11px; }}
+    border-radius:5px; padding:2px 9px; }}
   .setup:hover {{ border-color:var(--accent); }}
   .modal {{ position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:10;
     display:flex; align-items:center; justify-content:center; padding:24px; }}
