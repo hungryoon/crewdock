@@ -48,11 +48,9 @@ def test_list_layers_empty_when_no_dir(root):
     assert paths.list_layers(root) == []
 
 
-def test_gateway_dir_and_exposed_marker(tmp_path):
+def test_gateway_dir(tmp_path):
     from crew.core import paths
     assert paths.gateway_dir(tmp_path) == tmp_path / "instances" / "_gateway"
-    assert paths.exposed_marker_path(tmp_path, "alice") == \
-        tmp_path / "instances" / "alice" / "exposed"
 
 
 def test_credentials_dir_and_path(tmp_path):
