@@ -336,7 +336,7 @@ def test_create_validates_and_records_credentials(root, calls):
                    creds={"TELEGRAM_BOT_TOKEN": "t"}, credentials=["anthropic"])
     assert paths.read_meta(root, "alice")["credentials"] == ["anthropic"]
     compose = paths.compose_path(root, "alice").read_text()
-    assert "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" in compose
+    assert "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" in compose
     assert "secret" not in compose
 
 
@@ -371,7 +371,7 @@ def test_update_reapplies_credentials(root, calls):
     paths.compose_path(root, "alice").write_text("stale\n")
     manager.update(root, "alice")
     compose = paths.compose_path(root, "alice").read_text()
-    assert "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" in compose
+    assert "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" in compose
 
 
 def test_create_records_image_and_no_previous(root, calls):
@@ -591,7 +591,7 @@ def test_session_token_passed_through_not_inlined(root, calls):
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     tok = parse_env_file(paths.instance_env_path(root, "alice"))["HERMES_DASHBOARD_SESSION_TOKEN"]
     compose = paths.compose_path(root, "alice").read_text()
-    assert "HERMES_DASHBOARD_SESSION_TOKEN=${HERMES_DASHBOARD_SESSION_TOKEN}" in compose
+    assert "HERMES_DASHBOARD_SESSION_TOKEN=${HERMES_DASHBOARD_SESSION_TOKEN:-}" in compose
     assert tok not in compose
 
 

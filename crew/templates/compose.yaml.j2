@@ -24,7 +24,7 @@ services:
       - {{ dashboard_port_env }}={{ dashboard_port_value }}
 {%- endif %}
 {%- for key in passthrough_env %}
-      - {{ key }}=${{ '{' }}{{ key }}{{ '}' }}
+      - {{ key }}=${{ '{' }}{{ key }}:-{{ '}' }}
 {%- endfor %}
     shm_size: "{{ shm_size }}"
     mem_limit: {{ mem_limit }}

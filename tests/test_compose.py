@@ -58,8 +58,8 @@ def test_render_produces_valid_compose_with_interpolated_secrets(manifest_file):
     # static env baked literally
     assert "HERMES_DASHBOARD=1" in svc["environment"]
     # passthrough secrets referenced, never baked
-    assert "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}" in svc["environment"]
-    assert "HERMES_UID=${HERMES_UID}" in svc["environment"]
+    assert "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}" in svc["environment"]
+    assert "HERMES_UID=${HERMES_UID:-}" in svc["environment"]
 
 
 def test_render_has_no_literal_secret_values(manifest_file):
@@ -130,8 +130,8 @@ def test_render_compose_includes_credential_keys_as_passthrough(manifest_file):
     m = load_manifest(manifest_file)
     out = render_compose(m, "alice", 9120,
                          credential_keys=["ANTHROPIC_API_KEY", "OPENAI_API_KEY"])
-    assert "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" in out
-    assert "OPENAI_API_KEY=${OPENAI_API_KEY}" in out
+    assert "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" in out
+    assert "OPENAI_API_KEY=${OPENAI_API_KEY:-}" in out
 
 
 def test_render_compose_credential_keys_dedupe_against_passthrough(manifest_file):
@@ -139,7 +139,7 @@ def test_render_compose_credential_keys_dedupe_against_passthrough(manifest_file
     # a key already in manifest.passthrough_env must not be rendered twice
     dup = m.passthrough_env[0]
     out = render_compose(m, "alice", 9120, credential_keys=[dup])
-    assert out.count(f"{dup}=${{{dup}}}") == 1
+    assert out.count(f"{dup}=${{{dup}:-}}") == 1
 
 
 def test_render_compose_uses_image_override():
