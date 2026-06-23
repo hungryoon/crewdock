@@ -57,7 +57,7 @@ def rm(name: str, purge: bool = typer.Option(False, help="also delete data/")):
     typer.echo(f"removed {name}" + (" (purged)" if purge else " (data kept)"))
 
 
-gateway_app = typer.Typer(help="Single login gateway for all exposed dashboards.")
+gateway_app = typer.Typer(help="Single login gateway for all instance dashboards.")
 app.add_typer(gateway_app, name="gateway")
 
 
