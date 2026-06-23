@@ -19,6 +19,7 @@ services:
 {%- for key, value in static_env.items() %}
       - {{ key }}={{ value }}
 {%- endfor %}
+      - TZ={{ timezone }}
 {%- if dashboard_port_env %}
       - {{ dashboard_port_env }}={{ dashboard_port_value }}
 {%- endif %}

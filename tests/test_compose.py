@@ -166,3 +166,24 @@ def test_render_compose_falls_back_to_manifest_image():
     manifest = load_manifest(d)
     out = render_compose(manifest, "alice", 9120)
     assert "image: nousresearch/hermes-agent:latest" in out
+
+
+def _load_sample_manifest():
+    from crew.core.manifest import load_manifest
+    from tests.conftest import SAMPLE_MANIFEST
+    import tempfile, pathlib
+    d = pathlib.Path(tempfile.mkdtemp()) / "hermes.yaml"
+    d.write_text(SAMPLE_MANIFEST)
+    return load_manifest(d)
+
+
+def test_render_compose_includes_default_timezone():
+    from crew.core.compose import render_compose
+    out = render_compose(_load_sample_manifest(), "alice", 9120)
+    assert "TZ=Asia/Seoul" in out
+
+
+def test_render_compose_timezone_override():
+    from crew.core.compose import render_compose
+    out = render_compose(_load_sample_manifest(), "alice", 9120, timezone="UTC")
+    assert "TZ=UTC" in out

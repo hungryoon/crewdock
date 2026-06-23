@@ -515,3 +515,63 @@ def test_create_failure_cleans_up_instance_dir(root, monkeypatch):
     with pytest.raises(RuntimeError):
         manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     assert not paths.instance_dir(root, "alice").exists()
+
+
+def test_create_default_timezone_kst(root, calls):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    assert paths.read_meta(root, "alice")["timezone"] == "Asia/Seoul"
+    assert "TZ=Asia/Seoul" in paths.compose_path(root, "alice").read_text()
+
+
+def test_create_custom_timezone(root, calls):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes",
+                   creds={"TELEGRAM_BOT_TOKEN": "t"}, tz="America/New_York")
+    assert paths.read_meta(root, "alice")["timezone"] == "America/New_York"
+    assert "TZ=America/New_York" in paths.compose_path(root, "alice").read_text()
+
+
+def test_create_invalid_timezone_rejected(root, calls):
+    import pytest
+    from crew.core.errors import CrewError
+    _agents_dir(root)
+    with pytest.raises(CrewError, match="invalid timezone"):
+        manager.create(root, "alice", type="hermes",
+                       creds={"TELEGRAM_BOT_TOKEN": "t"}, tz="Mars/Phobos")
+    assert not paths.instance_dir(root, "alice").exists()
+
+
+def test_update_timezone_changes_it(root, calls):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    manager.update(root, "alice", tz="UTC")
+    assert paths.read_meta(root, "alice")["timezone"] == "UTC"
+    assert "TZ=UTC" in paths.compose_path(root, "alice").read_text()
+
+
+def test_update_invalid_timezone_rejected(root, calls):
+    import pytest
+    from crew.core.errors import CrewError
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    with pytest.raises(CrewError, match="invalid timezone"):
+        manager.update(root, "alice", tz="Nope/Nope")
+
+
+def test_render_backcompat_defaults_timezone(root, calls):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    meta = paths.read_meta(root, "alice")
+    del meta["timezone"]
+    paths.write_meta(root, "alice", meta)
+    manager.update(root, "alice")
+    assert "TZ=Asia/Seoul" in paths.compose_path(root, "alice").read_text()
+
+
+def test_status_reports_timezone(root, calls, monkeypatch):
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes",
+                   creds={"TELEGRAM_BOT_TOKEN": "t"}, tz="Europe/London")
+    monkeypatch.setattr(manager, "_compose_state", lambda root, name: "running")
+    assert manager.status(root, "alice").timezone == "Europe/London"

@@ -22,7 +22,7 @@ def test_create_invokes_manager(monkeypatch, root):
     _patch(monkeypatch, root)
     captured = {}
 
-    def fake_create(r, name, type, creds, layers, credentials):
+    def fake_create(r, name, type, creds, layers, credentials, tz=None):
         captured.update(name=name, type=type, creds=creds, layers=layers)
         from crew.core.models import Instance
         return Instance(name=name, type=type, port=9120, image="img",
@@ -44,7 +44,7 @@ def test_create_passes_layers(monkeypatch, root):
     _patch(monkeypatch, root)
     captured = {}
 
-    def fake_create(r, name, type, creds, layers, credentials):
+    def fake_create(r, name, type, creds, layers, credentials, tz=None):
         captured["layers"] = layers
         from crew.core.models import Instance
         return Instance(name=name, type=type, port=9120, image="img")
@@ -103,7 +103,7 @@ def test_create_passes_credentials(monkeypatch, root):
     _patch(monkeypatch, root)
     captured = {}
 
-    def fake_create(r, name, type, creds, layers, credentials):
+    def fake_create(r, name, type, creds, layers, credentials, tz=None):
         captured.update(credentials=credentials)
         from crew.core.models import Instance
         return Instance(name=name, type=type, port=9120, image="img",
@@ -135,7 +135,7 @@ def test_cli_update_image_calls_manager(monkeypatch, tmp_path):
     captured = {}
 
     def fake_update(root, name, backup=False, image=None,
-                    rollback=False, to_default=False):
+                    rollback=False, to_default=False, tz=None):
         captured.update(name=name, image=image, rollback=rollback,
                         to_default=to_default)
 
@@ -160,3 +160,42 @@ def test_cli_status_shows_rollback_available(monkeypatch, tmp_path):
     result = runner.invoke(cli.app, ["status", "alice"])
     assert result.exit_code == 0
     assert "rollback available: img:latest" in result.stdout
+
+
+def test_cli_create_timezone_forwarded(monkeypatch, tmp_path):
+    from crew import cli
+    from crew.core.models import Instance
+    captured = {}
+    def fake_create(root, name, type, creds, layers=None, credentials=None, tz=None):
+        captured["tz"] = tz
+        return Instance(name=name, type=type, port=9120, image="x")
+    monkeypatch.setattr(cli.manager, "create", fake_create)
+    monkeypatch.setattr(cli, "_root", lambda: tmp_path)
+    result = runner.invoke(cli.app, ["create", "alice", "--timezone", "UTC"])
+    assert result.exit_code == 0
+    assert captured["tz"] == "UTC"
+
+
+def test_cli_update_timezone_forwarded(monkeypatch, tmp_path):
+    from crew import cli
+    captured = {}
+    def fake_update(root, name, backup=False, image=None, rollback=False,
+                    to_default=False, tz=None):
+        captured["tz"] = tz
+    monkeypatch.setattr(cli.manager, "update", fake_update)
+    monkeypatch.setattr(cli, "_root", lambda: tmp_path)
+    result = runner.invoke(cli.app, ["update", "alice", "--tz", "UTC"])
+    assert result.exit_code == 0
+    assert captured["tz"] == "UTC"
+
+
+def test_cli_status_shows_timezone(monkeypatch, tmp_path):
+    from crew import cli
+    from crew.core.models import Instance
+    inst = Instance(name="alice", type="hermes", port=9120, image="img",
+                    timezone="Asia/Seoul", state="running")
+    monkeypatch.setattr(cli.manager, "status", lambda root, name: inst)
+    monkeypatch.setattr(cli, "_root", lambda: tmp_path)
+    result = runner.invoke(cli.app, ["status", "alice"])
+    assert result.exit_code == 0
+    assert "tz=Asia/Seoul" in result.stdout

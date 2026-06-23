@@ -5,6 +5,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from .manifest import Manifest
 from .paths import project_name
+from .tz import DEFAULT_TIMEZONE
 
 _TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 
@@ -16,6 +17,7 @@ def render_compose(
     layers: list[str] | None = None,
     credential_keys: list[str] | None = None,
     image: str | None = None,
+    timezone: str | None = None,
 ) -> str:
     """Render docker-compose.yml text. `port` is recorded by the caller into
     instance.env as CREW_PORT; the compose file references it via ${CREW_PORT}.
@@ -39,6 +41,7 @@ def render_compose(
             passthrough.append(key)
     return template.render(
         image=image or manifest.image,
+        timezone=timezone or DEFAULT_TIMEZONE,
         container_name=project_name(name),
         data_mount=manifest.data_mount,
         layers_mount=manifest.layers_mount or "/opt/shared",

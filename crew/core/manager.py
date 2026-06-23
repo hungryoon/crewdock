@@ -15,6 +15,7 @@ from .errors import (
 from .manifest import load_manifest
 from .models import Instance
 from .ports import find_free_port
+from .tz import DEFAULT_TIMEZONE, validate_timezone
 from . import paths
 from . import expose as _expose
 from . import credentials as _credentials
@@ -78,10 +79,13 @@ def _validate_layers(root: Path, layers: list[str]) -> None:
 
 
 def create(root: Path, name: str, type: str, creds: dict,
-           layers: list[str] | None = None, credentials: list[str] | None = None) -> Instance:
+           layers: list[str] | None = None, credentials: list[str] | None = None,
+           tz: str | None = None) -> Instance:
     layers = layers or []
     credentials = credentials or []
+    tz = tz or DEFAULT_TIMEZONE
     paths.validate_name(name)
+    validate_timezone(tz)
     inst_dir = paths.instance_dir(root, name)
     manifest = load_manifest(_manifest_path(root, type))
     _validate_layers(root, layers)
@@ -103,11 +107,13 @@ def create(root: Path, name: str, type: str, creds: dict,
             cred_keys = _credentials.credential_keys(root, credentials)
             paths.compose_path(root, name).write_text(
                 render_compose(manifest, name, port, layers=layers,
-                               credential_keys=cred_keys, image=manifest.image)
+                               credential_keys=cred_keys, image=manifest.image,
+                               timezone=tz)
             )
             paths.write_meta(root, name, {
                 "type": type, "port": port, "image": manifest.image,
                 "layers": layers, "credentials": credentials,
+                "timezone": tz,
                 "created_at": _stamp(),
             })
             run_compose(
@@ -124,7 +130,7 @@ def create(root: Path, name: str, type: str, creds: dict,
             raise
 
     return Instance(name=name, type=type, port=port, image=manifest.image,
-                    state="running")
+                    timezone=tz, state="running")
 
 
 def _require_exists(root: Path, name: str) -> None:
@@ -216,6 +222,7 @@ def status(root: Path, name: str) -> Instance:
         port=port,
         image=meta.get("image", "unknown"),
         previous_image=meta.get("previous_image", ""),
+        timezone=meta.get("timezone", DEFAULT_TIMEZONE),
         state=_compose_state(root, name),
         created_at=meta.get("created_at", ""),
     )
@@ -271,13 +278,14 @@ def _render_instance(root: Path, name: str, meta: dict, manifest, image: str) ->
     cred_keys = _credentials.credential_keys(root, meta.get("credentials", []))
     paths.compose_path(root, name).write_text(
         render_compose(manifest, name, port, layers=meta.get("layers", []),
-                       credential_keys=cred_keys, image=image)
+                       credential_keys=cred_keys, image=image,
+                       timezone=meta.get("timezone", DEFAULT_TIMEZONE))
     )
 
 
 def update(root: Path, name: str, backup: bool = False,
            image: str | None = None, rollback: bool = False,
-           to_default: bool = False) -> None:
+           to_default: bool = False, tz: str | None = None) -> None:
     """Re-render compose, pull the instance's image, and recreate.
     Bare (no image) keeps the pin; image=<ref> repins atomically
     (restores meta+compose if pull/up fails). rollback=True swaps
@@ -297,6 +305,10 @@ def update(root: Path, name: str, backup: bool = False,
     meta = paths.read_meta(root, name)
     manifest = load_manifest(_manifest_path(root, meta.get("type", "")))
     current = meta.get("image", manifest.image)
+    if tz is not None:
+        validate_timezone(tz)
+        meta["timezone"] = tz
+        paths.write_meta(root, name, meta)
     project = paths.project_name(name)
     compose_file = paths.compose_path(root, name)
     env_files = _env_files(root, name)

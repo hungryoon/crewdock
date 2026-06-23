@@ -33,6 +33,8 @@ def create(
                                     help="read-only data layer to mount (repeatable)"),
     credential: list[str] = typer.Option([], "--credential",
                                          help="credential bundle to inject (repeatable)"),
+    timezone: str = typer.Option("Asia/Seoul", "--timezone", "--tz",
+                                 help="container timezone (IANA zone, e.g. Asia/Seoul); default KST"),
 ):
     """Create and start a new instance."""
     creds: dict[str, str] = {}
@@ -40,7 +42,7 @@ def create(
         creds["TELEGRAM_BOT_TOKEN"] = bot_token
     try:
         inst = manager.create(_root(), name, type=type, creds=creds,
-                              layers=layer, credentials=credential)
+                              layers=layer, credentials=credential, tz=timezone)
     except CrewError as exc:
         _fail(exc)
     typer.echo(f"created {inst.name} ({inst.type}) -> {inst.dashboard_url} "
@@ -124,7 +126,7 @@ def status(name: str):
     except CrewError as exc:
         _fail(exc)
     line = (f"{i.name}: {i.state}  type={i.type}  image={i.image}  "
-            f"{i.dashboard_url}")
+            f"tz={i.timezone}  {i.dashboard_url}")
     if i.previous_image:
         line += f"\n  rollback available: {i.previous_image}"
     typer.echo(line)
@@ -176,6 +178,8 @@ def update(
                                   help="roll back to the previous image pin"),
     to_default: bool = typer.Option(False, "--to-default",
                                     help="repin to the manifest's default image"),
+    timezone: str = typer.Option(None, "--timezone", "--tz",
+                                 help="change the instance timezone (IANA zone)"),
 ):
     """Pull the instance's image and recreate (re-reads _shared.env).
 
@@ -189,7 +193,7 @@ def update(
     for n in targets:
         try:
             manager.update(root, n, backup=backup, image=image,
-                           rollback=rollback, to_default=to_default)
+                           rollback=rollback, to_default=to_default, tz=timezone)
             typer.echo(f"updated {n}")
         except CrewError as exc:
             typer.secho(f"error updating {n}: {exc}", fg=typer.colors.RED, err=True)

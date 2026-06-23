@@ -8,6 +8,7 @@ class Instance:
     port: int
     image: str
     previous_image: str = ""
+    timezone: str = ""
     state: str = "unknown"       # running | stopped | absent | unknown
     health: str = "unknown"      # ok | down | unknown
     created_at: str = ""
