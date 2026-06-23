@@ -112,20 +112,5 @@ def build_app() -> web.Application:
 
 
 def main() -> None:
-    sock = os.environ.get("CREW_ROUTER_SOCK")
-    if not sock:
-        port = int(os.environ.get("CREW_ROUTER_PORT", "9400"))
-        web.run_app(build_app(), host="127.0.0.1", port=port)
-        return
-
-    async def _serve_unix() -> None:
-        runner = web.AppRunner(build_app())
-        await runner.setup()
-        if os.path.exists(sock):
-            os.unlink(sock)          # clear a stale socket from a prior run
-        site = web.UnixSite(runner, sock)
-        await site.start()
-        os.chmod(sock, 0o666)        # allow the non-root oauth2-proxy to connect
-        await asyncio.Event().wait()  # run forever (container lifetime)
-
-    asyncio.run(_serve_unix())
+    port = int(os.environ.get("CREW_ROUTER_PORT", "9400"))
+    web.run_app(build_app(), host="127.0.0.1", port=port)

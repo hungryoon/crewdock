@@ -15,18 +15,17 @@ GATEWAY_AUTH_CONTAINER = "crew-gateway-auth"
 ROUTER_PORT = 9400
 GATEWAY_AUTH_PORT = 9401
 GATEWAY_HTTPS_PORT = 443
-ROUTER_SOCK_DIR_CONTAINER = "/run/crew-gw"
-ROUTER_SOCK = "/run/crew-gw/router.sock"
 
 
-def render_gateway_oauth2_env(cfg, authport: int, redirect: str) -> str:
+def render_gateway_oauth2_env(cfg, authport: int, routerport: int,
+                              redirect: str) -> str:
     lines = [
         "OAUTH2_PROXY_PROVIDER=google",
         f"OAUTH2_PROXY_CLIENT_ID={cfg.client_id}",
         f"OAUTH2_PROXY_CLIENT_SECRET={cfg.client_secret}",
         f"OAUTH2_PROXY_COOKIE_SECRET={cfg.cookie_secret}",
         f"OAUTH2_PROXY_REDIRECT_URL={redirect}",
-        f"OAUTH2_PROXY_UPSTREAMS=unix://{ROUTER_SOCK}",
+        f"OAUTH2_PROXY_UPSTREAMS=http://127.0.0.1:{routerport}/",
         f"OAUTH2_PROXY_HTTP_ADDRESS=127.0.0.1:{authport}",
         "OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE=/etc/oauth2-proxy/emails.txt",
         "OAUTH2_PROXY_PASS_USER_HEADERS=true",
@@ -45,14 +44,13 @@ def router_build_argv(repo_root: str) -> list[str]:
     ]
 
 
-def router_run_argv(root_abs: str, sock_dir_host: str) -> list[str]:
+def router_run_argv(root_abs: str, router_port: int) -> list[str]:
     root_abs = str(root_abs)
     return [
         "docker", "run", "-d", "--pull", "never", "--name", ROUTER_CONTAINER,
         "--network", "host", "--restart", "unless-stopped",
         "-v", f"{root_abs}/instances:/crew/instances:ro",
-        "-v", f"{sock_dir_host}:{ROUTER_SOCK_DIR_CONTAINER}",
-        "-e", f"CREW_ROUTER_SOCK={ROUTER_SOCK}",
+        "-e", f"CREW_ROUTER_PORT={router_port}",
         "-e", "CREW_ROOT=/crew",
         ROUTER_IMAGE,
     ]
@@ -79,35 +77,29 @@ def gateway_up(root: Path) -> dict:
     emails_file = gdir / "emails.txt"
     emails_file.write_text("\n".join(emails) + "\n")
     emails_file.chmod(0o600)
-    sock_dir = gdir / "run"
-    sock_dir.mkdir(exist_ok=True)
-    # 0711: oauth2-proxy runs as a non-root uid and must traverse this dir to
-    # reach the socket; the parent gdir is 0700 and the dir is only bind-mounted
-    # into the trusted router + auth containers. The socket itself is chmod 0666
-    # by the router (see router.py main). If a live `crew gateway up` smoke test
-    # shows oauth2-proxy cannot connect, the fallback is `--user 0:0` on the auth
-    # container or 0o777 here. THIS WIRING IS UNVERIFIED IN CI — needs a live test.
-    sock_dir.chmod(0o711)
     env_file = gdir / "oauth2.env"
-    env_file.write_text(render_gateway_oauth2_env(cfg, GATEWAY_AUTH_PORT, redirect))
+    env_file.write_text(render_gateway_oauth2_env(
+        cfg, GATEWAY_AUTH_PORT, ROUTER_PORT, redirect))
     env_file.chmod(0o600)
 
-    # NOTE: This whole gateway wiring (router on a unix socket, oauth2-proxy
-    # unix:// upstream, perms above) CANNOT be verified in CI — it needs a live
-    # `crew gateway up` smoke test with real Tailscale + Docker + oauth2-proxy
-    # v7.6.0 + Google OAuth. Verify the auth container can connect to the socket
-    # there; see the perms fallbacks noted on sock_dir above.
+    # SECURITY NOTE: the router listens on TCP 127.0.0.1:ROUTER_PORT and trusts
+    # the X-Forwarded-Email oauth2-proxy sets. Instances run with host networking
+    # and share this loopback, so a compromised instance could reach the router
+    # directly and spoof that header. Acceptable for a single trusted operator on
+    # a private tailnet; HARDEN before multi-user (e.g. a shared-secret header
+    # only oauth2-proxy injects). A unix-socket upstream would close this, but
+    # oauth2-proxy v7.6.0 cannot proxy WebSockets over a unix socket
+    # ("unsupported protocol scheme unix" -> 502), which breaks chat/events.
     try:
         _run(router_build_argv(_repo_root()))
         _run_quiet(["docker", "rm", "-f", ROUTER_CONTAINER])
-        _run(router_run_argv(str(root.resolve()), str(sock_dir.resolve())))
+        _run(router_run_argv(str(root.resolve()), ROUTER_PORT))
         _run_quiet(["docker", "rm", "-f", GATEWAY_AUTH_CONTAINER])
         _run([
             "docker", "run", "-d", "--name", GATEWAY_AUTH_CONTAINER,
             "--network", "host", "--restart", "unless-stopped",
             "--env-file", str(env_file.resolve()),
             "-v", f"{emails_file.resolve()}:/etc/oauth2-proxy/emails.txt:ro",
-            "-v", f"{sock_dir.resolve()}:{ROUTER_SOCK_DIR_CONTAINER}",
             OAUTH2_IMAGE,
         ])
         _run(serve_argv(GATEWAY_HTTPS_PORT, GATEWAY_AUTH_PORT))
