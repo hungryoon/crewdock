@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .creds import parse_env_file
-from .errors import ExposeError, InstanceNotFoundError
+from .errors import ExposeError
 from . import paths
 
 OAUTH2_IMAGE = "quay.io/oauth2-proxy/oauth2-proxy:v7.6.0"
@@ -91,33 +91,3 @@ def _run(argv: list[str]) -> None:
 def _run_quiet(argv: list[str]) -> None:
     """Best-effort command for teardown; never raises."""
     subprocess.run(argv, check=False, capture_output=True)
-
-
-def expose(root: Path, name: str) -> None:
-    """Publish an instance to the gateway (mark it; require a whitelist)."""
-    if not paths.instance_dir(root, name).exists():
-        raise InstanceNotFoundError(f"no such instance: {name}")
-    raw = parse_env_file(paths.instance_env_path(root, name)).get(
-        "CREW_ALLOWED_EMAILS", "")
-    if not [e for e in raw.split(",") if e.strip()]:
-        raise ExposeError(
-            "CREW_ALLOWED_EMAILS is empty — set it (comma-separated) in "
-            f"instances/{name}/instance.env before exposing."
-        )
-    paths.exposed_marker_path(root, name).write_text("")
-    from crew.core import gateway
-    if gateway.gateway_running():
-        gateway.regenerate_union_emails(root)
-
-
-def unexpose(root: Path, name: str) -> None:
-    marker = paths.exposed_marker_path(root, name)
-    if marker.exists():
-        marker.unlink()
-    from crew.core import gateway
-    if gateway.gateway_running():
-        gateway.regenerate_union_emails(root)
-
-
-def is_exposed_for(root: Path, name: str) -> bool:
-    return paths.exposed_marker_path(root, name).exists()
