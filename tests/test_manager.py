@@ -307,25 +307,23 @@ def test_shell_argv_uses_exec(root, calls):
     assert "agent" in argv
 
 
-def test_remove_unpublishes_if_exposed(root, calls, monkeypatch):
+def test_remove_regenerates_union(root, calls, monkeypatch):
     _agents_dir(root)
-    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
-    import crew.core.expose as expose
-    paths.exposed_marker_path(root, "alice").write_text("")
-    unexposed = []
-    monkeypatch.setattr(expose, "unexpose", lambda r, n: unexposed.append(n))
+    manager.create(root, "alice", type="hermes", creds={})
+    import crew.core.gateway as gateway
+    regen = []
+    monkeypatch.setattr(gateway, "regenerate_union_emails", lambda r: regen.append(r))
     manager.remove(root, "alice")
-    assert unexposed == ["alice"]
+    assert regen == [root]
 
 
-def test_remove_skips_unpublish_when_not_exposed(root, calls, monkeypatch):
+def test_create_regenerates_union(root, calls, monkeypatch):
     _agents_dir(root)
-    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
-    import crew.core.expose as expose
-    unexposed = []
-    monkeypatch.setattr(expose, "unexpose", lambda r, n: unexposed.append(n))
-    manager.remove(root, "alice")   # no marker written -> not exposed
-    assert unexposed == []
+    import crew.core.gateway as gateway
+    regen = []
+    monkeypatch.setattr(gateway, "regenerate_union_emails", lambda r: regen.append(r))
+    manager.create(root, "bob", type="hermes", creds={})
+    assert regen == [root]
 
 
 def test_create_validates_and_records_credentials(root, calls):

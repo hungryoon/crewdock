@@ -18,7 +18,6 @@ from .models import Instance
 from .ports import find_free_port
 from .tz import DEFAULT_TIMEZONE, validate_timezone
 from . import paths
-from . import expose as _expose
 from . import credentials as _credentials
 
 
@@ -68,10 +67,11 @@ def _write_instance_env(root: Path, name: str, port: int, creds: dict,
     # already-loaded browser SPA (events feed / chat then 403). Pinning it here
     # keeps the token stable across restarts/updates.
     lines.append(f"HERMES_DASHBOARD_SESSION_TOKEN={_new_session_token()}")
-    # Pre-seed the expose whitelist key (commented out, so inactive) so enabling
-    # `crew expose` is just "uncomment and fill in" — no need to recall the key.
+    # Pre-seed the access whitelist key (commented out, so the instance starts
+    # closed — invisible and unreachable on the gateway). Uncomment + fill in to
+    # grant gateway access; an empty/absent whitelist means no one can reach it.
     lines.append("")
-    lines.append("# Uncomment + set Google accounts (comma-separated) to allow `crew expose`:")
+    lines.append("# Uncomment + set Google accounts (comma-separated) to grant gateway access:")
     lines.append("# CREW_ALLOWED_EMAILS=you@example.com")
     paths.instance_env_path(root, name).write_text("\n".join(lines) + "\n")
     paths.instance_env_path(root, name).chmod(0o600)
@@ -151,6 +151,10 @@ def create(root: Path, name: str, type: str, creds: dict,
                 pass
             raise
 
+    # New instance's whitelist (if any) joins the gateway SSO allowlist.
+    # No-op when the gateway is down (emails.txt won't exist).
+    from crew.core import gateway
+    gateway.regenerate_union_emails(root)
     return Instance(name=name, type=type, port=port, image=manifest.image,
                     timezone=tz, state="running")
 
@@ -162,8 +166,6 @@ def _require_exists(root: Path, name: str) -> None:
 
 def remove(root: Path, name: str, purge: bool = False) -> None:
     _require_exists(root, name)
-    if _expose.is_exposed_for(root, name):
-        _expose.unexpose(root, name)
     run_compose(
         paths.project_name(name),
         paths.compose_path(root, name),
@@ -172,6 +174,10 @@ def remove(root: Path, name: str, purge: bool = False) -> None:
     )
     if purge:
         _purge_dir(paths.instance_dir(root, name))
+    # Keep the gateway SSO allowlist in sync with the surviving instances'
+    # whitelists (no-op when the gateway is down — emails.txt won't exist).
+    from crew.core import gateway
+    gateway.regenerate_union_emails(root)
 
 
 def _on_rm_error(func, path, exc):
