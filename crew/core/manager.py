@@ -111,7 +111,9 @@ def _validate_layers(root: Path, layers: list[str]) -> None:
     available = set(paths.list_layers(root))
     for layer in layers:
         if layer not in available:
-            raise LayerNotFoundError(f"no such layer in pool: {layer}")
+            raise LayerNotFoundError(
+                f"layer {layer!r} not found in data/layers/ — copy it there "
+                f"or recreate the instance without it")
 
 
 def create(root: Path, name: str, type: str, creds: dict,
@@ -395,6 +397,11 @@ def update(root: Path, name: str, backup: bool = False,
         dst = paths.instance_dir(root, iid) / f"data.bak-{_stamp()}"
         shutil.copytree(src, dst)
     meta = paths.read_meta(root, iid)
+    # Every bring-up path below (bare re-render, --image/--rollback/--to-default
+    # repins) re-mounts meta["layers"]. If a referenced layer was removed from
+    # data/layers/, Docker would silently auto-create an empty source dir for the
+    # bind mount and the agent would lose that knowledge — fail loudly instead.
+    _validate_layers(root, meta.get("layers", []))
     manifest = load_manifest(_manifest_path(root, meta.get("type", "")))
     current = meta.get("image", manifest.image)
     if tz is not None:

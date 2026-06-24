@@ -358,6 +358,17 @@ def test_update_rerenders_compose_for_layer_changes(root, calls):
     assert "../../layers/knowledge:/opt/shared/knowledge:ro" in compose
 
 
+def test_update_errors_when_referenced_layer_missing(root, calls, monkeypatch):
+    _agents_dir(root)
+    (root / "data" / "layers" / "knowledge").mkdir(parents=True)
+    manager.create(root, "alice", type="hermes", creds={}, layers=["knowledge"])
+    import shutil as _sh
+    _sh.rmtree(root / "data" / "layers" / "knowledge")
+    from crew.core.errors import LayerNotFoundError
+    with pytest.raises(LayerNotFoundError):
+        manager.update(root, "alice")
+
+
 def test_create_env_file_order_shared_then_instance(root, monkeypatch):
     _agents_dir(root)
     (root / "data" / "_shared.env").write_text("CREW_PROJECT=test\nHERMES_UID=501\n")
