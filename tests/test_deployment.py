@@ -49,8 +49,25 @@ def test_non_integer_port_raises(tmp_path):
         load_deployment(tmp_path)
 
 
+def test_load_default_local_port(tmp_path):
+    _shared(tmp_path, "CREW_PROJECT=synt\n")
+    assert load_deployment(tmp_path).local_port == 9402
+
+
+def test_load_custom_local_port(tmp_path):
+    _shared(tmp_path, "CREW_PROJECT=synt\nCREW_GATEWAY_LOCAL_PORT=9500\n")
+    assert load_deployment(tmp_path).local_port == 9500
+
+
+def test_local_container_name():
+    dep = Deployment(project="synt", https_port=443, router_port=9400,
+                     auth_port=9401, local_port=9402)
+    assert dep.local_container() == "synt-gateway-local"
+
+
 def test_derived_names():
-    dep = Deployment(project="synt", https_port=443, router_port=9400, auth_port=9401)
+    dep = Deployment(project="synt", https_port=443, router_port=9400, auth_port=9401,
+                     local_port=9402)
     assert dep.router_container() == "synt-gateway-router"
     assert dep.auth_container() == "synt-gateway-auth"
     assert dep.broker_container() == "synt-gateway-broker"
@@ -60,8 +77,10 @@ def test_derived_names():
 
 
 def test_two_projects_have_distinct_names():
-    a = Deployment(project="synt", https_port=443, router_port=9400, auth_port=9401)
-    b = Deployment(project="smoke", https_port=8443, router_port=9500, auth_port=9501)
+    a = Deployment(project="synt", https_port=443, router_port=9400, auth_port=9401,
+                   local_port=9402)
+    b = Deployment(project="smoke", https_port=8443, router_port=9500, auth_port=9501,
+                   local_port=9502)
     assert a.router_container() != b.router_container()
     assert a.instance_project("alice") != b.instance_project("alice")
     assert a.instance_project("alice") == "synt-alice"

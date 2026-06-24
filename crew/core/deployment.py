@@ -12,12 +12,14 @@ class Deployment:
     https_port: int
     router_port: int
     auth_port: int
+    local_port: int
 
     def router_container(self) -> str: return f"{self.project}-gateway-router"
     def auth_container(self) -> str:   return f"{self.project}-gateway-auth"
     def broker_container(self) -> str: return f"{self.project}-gateway-broker"
     def router_image(self) -> str:     return f"{self.project}-gateway-router:local"
     def broker_image(self) -> str:     return f"{self.project}-gateway-broker:local"
+    def local_container(self) -> str:  return f"{self.project}-gateway-local"
 
     def instance_project(self, name: str) -> str:
         return paths.project_name(self.project, name)
@@ -45,4 +47,5 @@ def load_deployment(root: Path) -> Deployment:
         https_port=_port(env, "CREW_GATEWAY_HTTPS_PORT", 443),
         router_port=_port(env, "CREW_ROUTER_PORT", 9400),
         auth_port=_port(env, "CREW_AUTH_PORT", 9401),
+        local_port=_port(env, "CREW_GATEWAY_LOCAL_PORT", 9402),
     )

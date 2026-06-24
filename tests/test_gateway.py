@@ -36,7 +36,8 @@ from crew.core.deployment import Deployment
 
 
 def _dep():
-    return Deployment(project="test", https_port=443, router_port=9400, auth_port=9401)
+    return Deployment(project="test", https_port=443, router_port=9400, auth_port=9401,
+                      local_port=9402)
 
 
 def _full_shared(root):
