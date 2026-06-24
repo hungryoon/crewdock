@@ -68,3 +68,29 @@ def test_credentials_dir_and_path(tmp_path):
     assert paths.credentials_dir(tmp_path) == tmp_path / "credentials"
     assert paths.credential_path(tmp_path, "anthropic") == \
         tmp_path / "credentials" / "anthropic.env"
+
+
+def test_find_root_at_cwd(tmp_path):
+    from crew.core import paths
+    (tmp_path / "instances").mkdir()
+    (tmp_path / "instances" / "_shared.env").write_text("CREW_PROJECT=x\n")
+    assert paths.find_root(tmp_path) == tmp_path.resolve()
+
+
+def test_find_root_from_subdir(tmp_path):
+    from crew.core import paths
+    (tmp_path / "instances").mkdir()
+    (tmp_path / "instances" / "_shared.env").write_text("CREW_PROJECT=x\n")
+    sub = tmp_path / "instances" / "ted"
+    sub.mkdir()
+    assert paths.find_root(sub) == tmp_path.resolve()
+
+
+def test_find_root_none_raises(tmp_path):
+    from crew.core import paths
+    from crew.core.errors import CrewError
+    import pytest
+    d = tmp_path / "empty"
+    d.mkdir()
+    with pytest.raises(CrewError, match="crewdock deployment"):
+        paths.find_root(d)

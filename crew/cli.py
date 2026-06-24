@@ -1,4 +1,3 @@
-import os
 import subprocess
 from pathlib import Path
 from typing import NoReturn
@@ -12,6 +11,7 @@ from .core import manager
 from .core import gateway as gateway_mod
 from .core import credentials as credentials_mod
 from .core import init as init_mod
+from .core import paths
 from .core.errors import CrewError
 
 app = typer.Typer(help="Host a crew of isolated AI-assistant agent containers.")
@@ -20,9 +20,16 @@ app = typer.Typer(help="Host a crew of isolated AI-assistant agent containers.")
 _console = Console(width=120)
 
 
+def _here() -> Path:
+    return Path.cwd()
+
+
 def _root() -> Path:
-    """Project root = $CREW_ROOT or the current working directory."""
-    return Path(os.environ.get("CREW_ROOT", "."))
+    """Deployment root: nearest ancestor of cwd with instances/_shared.env."""
+    try:
+        return paths.find_root(_here())
+    except CrewError as exc:
+        _fail(exc)
 
 
 def _ok(msg: str) -> None:
@@ -57,17 +64,18 @@ def init(
     auth_port: int = typer.Option(9401, "--auth-port"),
     local_port: int = typer.Option(9402, "--local-port"),
 ):
-    """Initialize CREW_ROOT as a new deployment (one-time setup)."""
+    """Initialize the current directory as a new deployment (one-time setup)."""
     if not project:
         project = typer.prompt("project name")
+    here = _here()
     try:
-        init_mod.init(_root(), project=project, https_port=https_port,
+        init_mod.init(here, project=project, https_port=https_port,
                       router_port=router_port, auth_port=auth_port,
                       local_port=local_port)
     except CrewError as exc:
         _fail(exc)
     _ok(f"initialized deployment [bold]{project}[/bold]")
-    _kv("root", f"[cyan]{_root()}[/cyan]")
+    _kv("root", f"[cyan]{here}[/cyan]")
     _kv("gateway", f":{https_port} team · :{local_port} local")
     _console.print()
     _console.print("next")

@@ -21,6 +21,18 @@ def validate_name(name: str) -> None:
         )
 
 
+def find_root(start: Path) -> Path:
+    """Nearest ancestor of `start` (inclusive) that is an initialized crewdock
+    deployment (has instances/_shared.env). Raises CrewError if none."""
+    cur = start.resolve()
+    for d in (cur, *cur.parents):
+        if (d / "instances" / "_shared.env").is_file():
+            return d
+    raise CrewError(
+        "no crewdock deployment here — run `crew init <project>` in your "
+        "deployment directory, or cd into one")
+
+
 def instances_dir(root: Path) -> Path:
     return root / "instances"
 

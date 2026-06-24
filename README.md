@@ -62,7 +62,7 @@ uv run crew shell alice
 
 - **인스턴스(instance)** — 비서 한 "명". 격리된 Docker 컨테이너 1개 + 전용 `data/` 폴더. 기억·세션·키·신원이 모두 분리됩니다.
 
-- **배포(deployment)** — `CREW_ROOT` 디렉터리 하나가 한 배포입니다. `crew init` 이 프로젝트 이름(`CREW_PROJECT`)과 게이트웨이 포트를 정하고, 모든 Docker 객체는 `<project>-...` 로 prefix됩니다(`my-crew-alice`, `my-crew-gateway-router` …). 덕분에 `prod`·`smoke` 같은 **여러 배포가 한 머신에서 동시에 공존**합니다(이름·포트가 겹치면 조용히 덮어쓰지 않고 에러로 막습니다).
+- **배포(deployment)** — 배포 디렉터리 하나가 한 배포입니다(`crew` 는 현재 폴더에서 위로 올라가며 `instances/_shared.env` 가 있는 가장 가까운 폴더를 배포 루트로 잡습니다 — 환경변수 불필요). `crew init` 이 프로젝트 이름(`CREW_PROJECT`)과 게이트웨이 포트를 정하고, 모든 Docker 객체는 `<project>-...` 로 prefix됩니다(`my-crew-alice`, `my-crew-gateway-router` …). 덕분에 `prod`·`smoke` 같은 **여러 배포가 한 머신에서 동시에 공존**합니다(이름·포트가 겹치면 조용히 덮어쓰지 않고 에러로 막습니다).
 
 - **데이터 레이어(layer)** — 여러 비서가 공유할 자료(문서·가이드·브랜드 톤)를 **읽기 전용**으로 주입합니다. `layers/<이름>/` 폴더를 만들고 `crew create alice --layer knowledge` 로 마운트하면, 비서는 읽되 고칠 수 없습니다. 기본은 "아무 레이어도 안 붙음".
 
@@ -96,7 +96,7 @@ crew gateway reload
 crew gateway open
 ```
 
-팀 뷰: 사용자가 게이트웨이 URL에 접속 → 구글 로그인 → 이메일이 허용된 인스턴스의 대시보드로 프록시됩니다. 로컬 뷰: 운영자가 `crew gateway open` 으로 로그인 없이 전체 인스턴스를 봅니다. 둘째 배포(예: 스모크용)는 별도 `CREW_ROOT` + `crew init smoke --https-port 8443` 으로 상용과 동시에 띄울 수 있습니다.
+팀 뷰: 사용자가 게이트웨이 URL에 접속 → 구글 로그인 → 이메일이 허용된 인스턴스의 대시보드로 프록시됩니다. 로컬 뷰: 운영자가 `crew gateway open` 으로 로그인 없이 전체 인스턴스를 봅니다. 둘째 배포(예: 스모크용)는 다른 폴더에 또 clone하고 거기서 `crew init smoke --https-port 8443` 으로 상용과 동시에 띄울 수 있습니다.
 
 > 📘 인프라 셋업 → 사용자 추가 → 운영 → 보안 모델 → 트러블슈팅 전체 절차는 **[docs/multi-user.md](docs/multi-user.md)** 를 참고하세요.
 
@@ -104,7 +104,7 @@ crew gateway open
 
 | 명령어 | 설명 |
 | --- | --- |
-| `crew init <project>` | `CREW_ROOT` 를 새 배포로 초기화 (1회). 프로젝트 이름·포트 설정, 디렉터리 스캐폴딩 |
+| `crew init <project>` | 현재 폴더를 새 배포로 초기화 (1회). 프로젝트 이름·포트 설정, 디렉터리 스캐폴딩 |
 | `crew create <name>` | 격리된 인스턴스 생성 (옵션 ↓) |
 | `crew list` | 전체 인스턴스 목록 |
 | `crew status <name>` | 상태·타입·이미지·대시보드 URL (롤백 가능한 이전 이미지 표시) |

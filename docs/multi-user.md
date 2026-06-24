@@ -22,14 +22,16 @@
 
 ## 0. 배포 초기화 (`crew init` — 배포당 1번만)
 
-한 배포(deployment)는 하나의 데이터 루트(`CREW_ROOT`)와 하나의 프로젝트 이름(`CREW_PROJECT`)으로
+한 배포(deployment)는 하나의 데이터 루트(배포 디렉터리)와 하나의 프로젝트 이름(`CREW_PROJECT`)으로
 식별된다. `crew init`이 그 루트를 스캐폴딩하고(`instances`/`agents`/`layers`/`credentials`,
 에이전트 매니페스트 + `_template` 복사), `_shared.env`에 `CREW_PROJECT` + 게이트웨이 포트 +
-쿠키 시크릿 + Google OAuth 자리표시자를 한 번에 써준다.
+쿠키 시크릿 + Google OAuth 자리표시자를 한 번에 써준다. `crew init`은 **현재 폴더**를 루트로
+잡고(`git init`처럼), 이후의 다른 명령은 현재 폴더에서 위로 올라가며 `instances/_shared.env`가
+있는 가장 가까운 폴더를 배포 루트로 찾는다(환경변수 불필요).
 
 ```sh
-export CREW_ROOT=~/synt-crewdock     # 배포별 데이터 루트
-crew init synt                       # 프로젝트 이름으로 한 번만
+cd ~/synt-crewdock                   # 배포별 데이터 루트로 이동
+crew init synt                       # 현재 폴더를 프로젝트 이름으로 한 번만 초기화
 ```
 
 - `CREW_PROJECT`(여기선 `synt`)와 게이트웨이 포트(`CREW_GATEWAY_HTTPS_PORT`=443,
@@ -40,10 +42,10 @@ crew init synt                       # 프로젝트 이름으로 한 번만
 - Docker를 건드리는 명령은 루트가 초기화돼 있지 않으면 `NotInitializedError`로 멈춘다
   (먼저 `crew init` 실행).
 
-> **두 번째 배포(예: smoke)를 같은 호스트에 띄우려면** 별도의 `CREW_ROOT`와 **다른 프로젝트
-> 이름의 `crew init`**, 그리고 **충돌하지 않는 포트**가 필요하다:
+> **두 번째 배포(예: smoke)를 같은 호스트에 띄우려면** 다른 폴더에 따로 clone하고 거기서
+> **다른 프로젝트 이름의 `crew init`**, 그리고 **충돌하지 않는 포트**가 필요하다:
 > ```sh
-> export CREW_ROOT=~/smoke-crewdock
+> cd ~/smoke-crewdock                   # 별도 폴더(별도 clone)로 이동
 > crew init smoke --https-port 8443     # prod(:443)와 별개 포트
 > ```
 > 이러면 prod와 smoke가 충돌 없이 나란히 돈다. 이름/포트가 겹치면 `crew gateway up`은
@@ -173,7 +175,7 @@ exit
 
 ## 6. 한눈에 (배포 초기화 + 사용자 1명 추가)
 ```sh
-export CREW_ROOT=~/synt-crewdock                # 배포별 데이터 루트
+cd ~/synt-crewdock                              # 배포별 데이터 루트로 이동
 crew init synt                                  # 배포당 1번 (CREW_PROJECT/포트/_shared.env)
 crew create bob --credential anthropic          # 인스턴스 + 모델용 API 키 (생성과 동시에 게시)
 echo 'CREW_ALLOWED_EMAILS=bob@gmail.com' >> instances/bob/instance.env

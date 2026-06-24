@@ -215,8 +215,17 @@ def test_cli_status_shows_timezone(monkeypatch, tmp_path):
     assert "Asia/Seoul" in result.stdout
 
 
+def test_root_walks_up_and_fails_cleanly(monkeypatch, tmp_path):
+    # _root() must exit cleanly (nonzero) — not traceback — when no deployment found
+    monkeypatch.setattr(cli, "_here", lambda: tmp_path)  # empty dir, no deployment
+    # a command that calls _root without its own try/except is the real test:
+    result = runner.invoke(cli.app, ["list"])
+    assert result.exit_code != 0
+    assert "crewdock deployment" in result.stdout or "crewdock deployment" in str(result.output)
+
+
 def test_init_invokes_core(monkeypatch, root):
-    _patch(monkeypatch, root)
+    monkeypatch.setattr(cli, "_here", lambda: root)
     from crew.core import init as init_mod
     captured = {}
     def fake_init(r, project, https_port=443, router_port=9400, auth_port=9401,
