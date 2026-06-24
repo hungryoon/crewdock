@@ -54,3 +54,41 @@ def union_emails(root: Path) -> list[str]:
             if e not in seen:
                 seen.append(e)
     return seen
+
+
+def instance_emails(root: Path, instance_id: str) -> list[str]:
+    """Allowed emails for one instance (its CREW_ALLOWED_EMAILS)."""
+    return _emails(root, instance_id)
+
+
+def set_instance_emails(root: Path, instance_id: str,
+                        emails: list[str]) -> list[str]:
+    """Rewrite CREW_ALLOWED_EMAILS in the instance's instance.env, preserving
+    every other key (mirrors core.gateway.set_https_port). Strips blanks and
+    dedupes (order-preserving). Returns the list as stored."""
+    clean: list[str] = []
+    for e in emails:
+        e = e.strip()
+        if e and e not in clean:
+            clean.append(e)
+    p = paths.instance_env_path(root, instance_id)
+    lines = p.read_text().splitlines() if p.exists() else []
+    out, found = [], False
+    for ln in lines:
+        if ln.startswith("CREW_ALLOWED_EMAILS="):
+            out.append("CREW_ALLOWED_EMAILS=" + ",".join(clean))
+            found = True
+        else:
+            out.append(ln)
+    if not found:
+        out.append("CREW_ALLOWED_EMAILS=" + ",".join(clean))
+    paths.atomic_write_text(p, "\n".join(out) + "\n")
+    return clean
+
+
+def write_union_emails(root: Path) -> None:
+    """Write the cross-instance email union to data/_gateway/emails.txt (the file
+    oauth2-proxy watches). No-op when the gateway dir is absent (gateway down)."""
+    gdir = paths.gateway_dir(root)
+    if gdir.exists():
+        (gdir / "emails.txt").write_text("\n".join(union_emails(root)) + "\n")

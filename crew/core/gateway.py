@@ -322,9 +322,7 @@ def gateway_down(root: Path) -> None:
 
 def regenerate_union_emails(root: Path) -> None:
     """Rewrite the union emails file if the gateway dir exists (oauth2-proxy watches it)."""
-    f = paths.gateway_dir(root) / "emails.txt"
-    if f.exists():
-        f.write_text("\n".join(discovery.union_emails(root)) + "\n")
+    discovery.write_union_emails(root)
 
 
 def gateway_reload(root: Path) -> None:
