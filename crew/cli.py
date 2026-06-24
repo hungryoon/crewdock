@@ -8,6 +8,7 @@ import typer
 from .core import manager
 from .core import gateway as gateway_mod
 from .core import credentials as credentials_mod
+from .core import init as init_mod
 from .core.errors import CrewError
 
 app = typer.Typer(help="Host a crew of isolated AI-assistant agent containers.")
@@ -21,6 +22,26 @@ def _root() -> Path:
 def _fail(exc: Exception) -> NoReturn:
     typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
     raise typer.Exit(1)
+
+
+@app.command()
+def init(
+    project: str = typer.Argument(None, help="Deployment / project name."),
+    https_port: int = typer.Option(443, "--https-port"),
+    router_port: int = typer.Option(9400, "--router-port"),
+    auth_port: int = typer.Option(9401, "--auth-port"),
+):
+    """Initialize CREW_ROOT as a new deployment (one-time setup)."""
+    if not project:
+        project = typer.prompt("project name")
+    try:
+        init_mod.init(_root(), project=project, https_port=https_port,
+                      router_port=router_port, auth_port=auth_port)
+    except CrewError as exc:
+        _fail(exc)
+    typer.echo(f"initialized deployment '{project}' at {_root()}")
+    typer.echo("  next: set CREW_GOOGLE_CLIENT_ID/SECRET in "
+               "instances/_shared.env, then `crew create` + `crew gateway up`")
 
 
 @app.command()

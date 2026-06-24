@@ -198,3 +198,15 @@ def test_cli_status_shows_timezone(monkeypatch, tmp_path):
     result = runner.invoke(cli.app, ["status", "alice"])
     assert result.exit_code == 0
     assert "tz=Asia/Seoul" in result.stdout
+
+
+def test_init_invokes_core(monkeypatch, root):
+    _patch(monkeypatch, root)
+    from crew.core import init as init_mod
+    captured = {}
+    def fake_init(r, project, https_port=443, router_port=9400, auth_port=9401):
+        captured.update(project=project, https_port=https_port)
+    monkeypatch.setattr(init_mod, "init", fake_init)
+    result = runner.invoke(cli.app, ["init", "synt", "--https-port", "8443"])
+    assert result.exit_code == 0
+    assert captured == {"project": "synt", "https_port": 8443}
