@@ -91,4 +91,4 @@ def write_union_emails(root: Path) -> None:
     oauth2-proxy watches). No-op when the gateway dir is absent (gateway down)."""
     gdir = paths.gateway_dir(root)
     if gdir.exists():
-        (gdir / "emails.txt").write_text("\n".join(union_emails(root)) + "\n")
+        paths.atomic_write_text(gdir / "emails.txt", "\n".join(union_emails(root)) + "\n")
