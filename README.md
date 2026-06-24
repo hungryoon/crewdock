@@ -72,21 +72,29 @@ crew shell alice
 
 ## 팀에 공개하기 (게이트웨이)
 
-대시보드는 기본적으로 이 컴퓨터의 루프백 전용입니다(API 키를 다루므로). 외부(팀·고객)에 안전하게 열려면 **게이트웨이**를 띄웁니다 — Tailscale VPN + Google OAuth SSO가 앞단에서 인증을 처리합니다.
+`crew gateway up` 을 하면 **하나의 게이트웨이**가 **두 URL**로 열립니다:
+
+- **팀 뷰** `https://<타일넷>/` — Tailscale + 구글 SSO(oauth2-proxy). 각 사용자는 **자기 이메일이 허용된 인스턴스만** 봅니다. 외부·원격 사용자(팀·고객)용.
+- **로컬 뷰** `http://127.0.0.1:9402/` — 로그인 없이(호스트 접근 = 운영자), **전체 인스턴스**를 봅니다. 호스트에서 직접 쓰는 운영자용.
+
+둘 다 `crew gateway up` 으로 함께 뜨고 `crew gateway down` 으로 함께 내려갑니다. `crew gateway open` 으로 로컬 뷰를 브라우저에서 바로 엽니다(게이트웨이가 떠 있어야 함). 로컬 뷰 포트는 `CREW_GATEWAY_LOCAL_PORT`(기본 9402)로 바꿀 수 있습니다.
 
 ```bash
-# 1) 허용할 구글 계정을 인스턴스에 설정
+# 1) 허용할 구글 계정을 인스턴스에 설정 (팀 뷰에서 쓰임)
 #    instances/alice/instance.env:
 #    CREW_ALLOWED_EMAILS=you@example.com,colleague@example.com
 
-# 2) 게이트웨이 시작 (최초 1회) — URL + 등록할 OAuth 리디렉트 URI 출력
+# 2) 게이트웨이 시작 (최초 1회) — 팀 뷰 URL + 등록할 OAuth 리디렉트 URI 출력
 crew gateway up
 
 # 3) 화이트리스트를 손으로 바꾼 뒤에는 허용목록 갱신
 crew gateway reload
+
+# 4) 호스트에서 로컬 뷰(전체 인스턴스) 바로 열기
+crew gateway open
 ```
 
-사용자가 게이트웨이 URL에 접속 → 구글 로그인 → 이메일이 허용된 인스턴스의 대시보드로 프록시됩니다. 둘째 배포(예: 스모크용)는 별도 `CREW_ROOT` + `crew init smoke --https-port 8443` 으로 상용과 동시에 띄울 수 있습니다.
+팀 뷰: 사용자가 게이트웨이 URL에 접속 → 구글 로그인 → 이메일이 허용된 인스턴스의 대시보드로 프록시됩니다. 로컬 뷰: 운영자가 `crew gateway open` 으로 로그인 없이 전체 인스턴스를 봅니다. 둘째 배포(예: 스모크용)는 별도 `CREW_ROOT` + `crew init smoke --https-port 8443` 으로 상용과 동시에 띄울 수 있습니다.
 
 > 📘 인프라 셋업 → 사용자 추가 → 운영 → 보안 모델 → 트러블슈팅 전체 절차는 **[docs/multi-user.md](docs/multi-user.md)** 를 참고하세요.
 
@@ -104,7 +112,7 @@ crew gateway reload
 | `crew shell <name>` | 컨테이너 내부 셸 접속 (모델 인증도 여기서) |
 | `crew layers` | 사용 가능한 읽기 전용 데이터 레이어 목록 |
 | `crew credentials` | 자격증명 번들 목록 (키 이름만, 값은 표시 안 함) |
-| `crew gateway up` / `down` / `reload` | 단일 로그인 게이트웨이 시작·중지·허용목록 갱신 |
+| `crew gateway up` / `down` / `reload` / `open` | 단일 로그인 게이트웨이 시작·중지·허용목록 갱신·로컬 뷰 열기 |
 | `crew rm <name>` | 인스턴스 제거 (`--purge` 없으면 **데이터 보존**) |
 
 **`crew create` 옵션**
