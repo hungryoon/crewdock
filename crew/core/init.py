@@ -29,7 +29,7 @@ def _unique_project(label: str) -> str:
         cand = f"{label}-{ids.token()}"
         if not _prefix_in_use(cand):
             return cand
-    return f"{label}-{secrets.token_hex(6)}"
+    return f"{label}-{ids.token()}"   # within the 7-char budget (hyphen + 6 hex)
 
 
 def init(root: Path, project: str, https_port: int = 443,

@@ -247,9 +247,9 @@ def test_init_invokes_core(monkeypatch, root):
     def fake_init(r, project, https_port=443, router_port=9400, auth_port=9401,
                   local_port=9402):
         captured.update(project=project, https_port=https_port)
-        return "synt-fox42"
+        return "synt-3f9a2c"
     monkeypatch.setattr(init_mod, "init", fake_init)
     result = runner.invoke(cli.app, ["init", "synt", "--https-port", "8443"])
     assert result.exit_code == 0
     assert captured == {"project": "synt", "https_port": 8443}
-    assert "synt-fox42" in result.stdout
+    assert "synt-3f9a2c" in result.stdout
