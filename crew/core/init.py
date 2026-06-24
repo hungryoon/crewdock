@@ -5,7 +5,7 @@ from pathlib import Path
 from .creds import parse_env_file
 from .errors import CrewError
 from . import paths
-from . import petnames
+from . import ids
 
 
 def _prefix_in_use(candidate: str) -> bool:
@@ -21,15 +21,15 @@ def _prefix_in_use(candidate: str) -> bool:
 
 def _unique_project(label: str) -> str:
     paths.validate_name(label)
-    if len(label) + 11 > 30:   # room for "-wordNN" (≤11) within 30
+    if len(label) + 7 > 30:   # room for "-XXXXXX" (7) within 30
         raise CrewError(
             f"project name {label!r} is too long — leave room for the auto "
             f"suffix (max ~19 chars)")
     for _ in range(25):
-        cand = f"{label}-{petnames.suffix()}"
+        cand = f"{label}-{ids.token()}"
         if not _prefix_in_use(cand):
             return cand
-    return f"{label}-{secrets.token_hex(3)}"
+    return f"{label}-{secrets.token_hex(6)}"
 
 
 def init(root: Path, project: str, https_port: int = 443,
