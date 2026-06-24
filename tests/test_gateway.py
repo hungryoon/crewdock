@@ -175,15 +175,54 @@ def test_gateway_up_errors_when_already_up(tmp_path, monkeypatch):
         gateway.gateway_up(tmp_path)
 
 
-def test_gateway_up_errors_on_busy_port(tmp_path, monkeypatch):
+def test_allocate_ports_prefers_configured_when_free(monkeypatch):
+    monkeypatch.setattr(gateway, "_port_free", lambda port: True)
+    assert gateway.allocate_ports(_dep()) == (9400, 9401, 9402)
+
+
+def test_allocate_ports_falls_back_to_free_port_when_busy(monkeypatch):
+    # all configured loopback ports taken (e.g. orphaned gateway containers)
+    monkeypatch.setattr(gateway, "_port_free", lambda port: False)
+    seq = iter([9500, 9501, 9502])
+    monkeypatch.setattr(gateway, "_free_port", lambda: next(seq))
+    assert gateway.allocate_ports(_dep()) == (9500, 9501, 9502)
+
+
+def test_allocate_ports_keeps_chosen_distinct(monkeypatch):
+    # router's preferred (9400) is busy; its fallback grabs 9401 — which was
+    # auth's preferred. auth must then skip 9401 and take a fresh port.
+    free = {9400: False}
+    monkeypatch.setattr(gateway, "_port_free", lambda port: free.get(port, True))
+    seq = iter([9401, 9999])
+    monkeypatch.setattr(gateway, "_free_port", lambda: next(seq))
+    r, a, l = gateway.allocate_ports(_dep())
+    assert (r, a, l) == (9401, 9999, 9402)
+    assert len({r, a, l}) == 3
+
+
+def test_gateway_up_allocates_alternate_ports_when_preferred_busy(tmp_path, monkeypatch):
     _full_shared(tmp_path)
     _published(tmp_path)
+    cmds = []
+    monkeypatch.setattr(gateway, "_run", lambda argv: cmds.append(argv))
+    monkeypatch.setattr(gateway, "_run_quiet", lambda argv: None)
     monkeypatch.setattr(gateway, "_run_capture",
         lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
+    monkeypatch.setattr(gateway, "_repo_root", lambda: ".")
+    monkeypatch.setattr(gateway, "_require_build_context", lambda r: None)
     monkeypatch.setattr(gateway, "_container_exists", lambda name: False)
+    monkeypatch.setattr(gateway, "_https_port_served", lambda port: False)
     monkeypatch.setattr(gateway, "_port_free", lambda port: False)
-    with pytest.raises(ExposeError, match="in use"):
-        gateway.gateway_up(tmp_path)
+    seq = iter([9500, 9501, 9502])
+    monkeypatch.setattr(gateway, "_free_port", lambda: next(seq))
+
+    info = gateway.gateway_up(tmp_path)        # must NOT raise on a busy 9402
+
+    assert info["local_url"] == "http://127.0.0.1:9502/"
+    assert gateway.gateway_ports(tmp_path) == {"router": 9500, "auth": 9501, "local": 9502}
+    run = [c for c in cmds if isinstance(c, list)]
+    # tailscale serve maps the fixed HTTPS port to the chosen auth port
+    assert any(c[:2] == ["tailscale", "serve"] and "9501" in " ".join(c) for c in run)
 
 
 def test_gateway_up_errors_when_build_context_missing(tmp_path, monkeypatch):
@@ -249,17 +288,6 @@ def test_gateway_up_starts_local_view_and_returns_local_url(tmp_path, monkeypatc
     assert any("test-gateway-local" in c for c in run)
 
 
-def test_gateway_up_preflights_local_port(tmp_path, monkeypatch):
-    _full_shared(tmp_path)
-    _published(tmp_path)
-    monkeypatch.setattr(gateway, "_run_capture",
-        lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
-    monkeypatch.setattr(gateway, "_container_exists", lambda name: False)
-    monkeypatch.setattr(gateway, "_port_free", lambda port: port != 9402)
-    with pytest.raises(ExposeError, match="9402"):
-        gateway.gateway_up(tmp_path)
-
-
 def test_local_view_url_raises_when_down(tmp_path, monkeypatch):
     _full_shared(tmp_path)
     monkeypatch.setattr(gateway, "gateway_running", lambda dep: False)
@@ -268,9 +296,20 @@ def test_local_view_url_raises_when_down(tmp_path, monkeypatch):
 
 
 def test_local_view_url_when_up(tmp_path, monkeypatch):
+    # no ports.json yet -> falls back to the configured local port
     _full_shared(tmp_path)
     monkeypatch.setattr(gateway, "gateway_running", lambda dep: True)
     assert gateway.local_view_url(tmp_path) == "http://127.0.0.1:9402/"
+
+
+def test_local_view_url_uses_runtime_port(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    monkeypatch.setattr(gateway, "gateway_running", lambda dep: True)
+    gdir = _paths.gateway_dir(tmp_path)
+    gdir.mkdir(parents=True, exist_ok=True)
+    import json as _json
+    (gdir / "ports.json").write_text(_json.dumps({"router": 9500, "auth": 9501, "local": 9502}))
+    assert gateway.local_view_url(tmp_path) == "http://127.0.0.1:9502/"
 
 
 # --- HTTPS-port conflict helpers ---

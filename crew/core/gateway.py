@@ -31,6 +31,50 @@ def _port_free(port: int) -> bool:
             return False
 
 
+def _free_port() -> int:
+    """An OS-assigned free loopback port (bind to :0, read what we got)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def allocate_ports(dep) -> tuple[int, int, int]:
+    """Pick the (router, auth, local) loopback ports for a gateway start.
+
+    These three are internal 127.0.0.1 ports nobody types, so we don't insist on
+    the configured numbers: prefer them when free, otherwise grab an OS-assigned
+    free port. This sidesteps collisions with an orphaned gateway (e.g. left by a
+    project rename) instead of refusing to start. The HTTPS port is NOT chosen
+    here — it stays fixed because it's the tailnet-facing port."""
+    used: set[int] = set()
+    chosen: list[int] = []
+    for preferred in (dep.router_port, dep.auth_port, dep.local_port):
+        if preferred not in used and _port_free(preferred):
+            port = preferred
+        else:
+            port = _free_port()
+            while port in used:
+                port = _free_port()
+        used.add(port)
+        chosen.append(port)
+    return tuple(chosen)
+
+
+def _write_ports(gdir: Path, router: int, auth: int, local: int) -> None:
+    p = gdir / "ports.json"
+    p.write_text(json.dumps({"router": router, "auth": auth, "local": local}))
+    p.chmod(0o600)
+
+
+def gateway_ports(root: Path) -> dict | None:
+    """The loopback ports chosen at the last `up`, or None if the gateway dir
+    has no record (not running, or started before dynamic allocation)."""
+    p = paths.gateway_dir(root) / "ports.json"
+    if not p.exists():
+        return None
+    return json.loads(p.read_text())
+
+
 def _https_port_served(port: int) -> bool:
     try:
         data = json.loads(_run_capture(["tailscale", "serve", "status", "--json"]))
@@ -190,9 +234,6 @@ def gateway_up(root: Path) -> dict:
             raise ExposeError(
                 f"project '{dep.project}' gateway is already up — "
                 f"`crew gateway down` first")
-    for port in (dep.router_port, dep.auth_port, dep.local_port):
-        if not _port_free(port):
-            raise ExposeError(f"port {port} is already in use")
     if _https_port_served(dep.https_port):
         raise ExposeError(
             f"tailnet HTTPS port {dep.https_port} is already served — "
@@ -203,6 +244,10 @@ def gateway_up(root: Path) -> dict:
     gdir = paths.gateway_dir(root)
     gdir.mkdir(parents=True, exist_ok=True)
     gdir.chmod(0o700)
+    # Internal loopback ports are chosen now (preferring the configured ones)
+    # and recorded so `open`/`local_view_url` can find the local view later.
+    router_port, auth_port, local_port = allocate_ports(dep)
+    _write_ports(gdir, router_port, auth_port, local_port)
     emails_file = gdir / "emails.txt"
     emails_file.write_text("\n".join(emails) + "\n")
     emails_file.chmod(0o600)
@@ -215,7 +260,7 @@ def gateway_up(root: Path) -> dict:
     broker_dir.chmod(0o711)   # non-root broker/router uids traverse to the socket
     env_file = gdir / "oauth2.env"
     env_file.write_text(render_gateway_oauth2_env(
-        cfg, dep.auth_port, dep.router_port, redirect, gateway_secret))
+        cfg, auth_port, router_port, redirect, gateway_secret))
     env_file.chmod(0o600)
     # Sign-in/error pages themed to match the dashboard, bind-mounted read-only
     # into the auth container (OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR points here).
@@ -235,7 +280,7 @@ def gateway_up(root: Path) -> dict:
         _run(broker_build_argv(_repo_root(), dep.broker_image()))
         _run(broker_run_argv(str(broker_dir.resolve()), broker_secret,
                              dep.broker_container(), dep.broker_image(), dep.project))
-        _run(router_run_argv(str(root.resolve()), dep.router_port, gateway_secret,
+        _run(router_run_argv(str(root.resolve()), router_port, gateway_secret,
                              str(broker_dir.resolve()), broker_secret,
                              dep.router_container(), dep.router_image()))
         _run([
@@ -246,10 +291,10 @@ def gateway_up(root: Path) -> dict:
             "-v", f"{templates_dir.resolve()}:/etc/oauth2-proxy/templates:ro",
             OAUTH2_IMAGE,
         ])
-        _run(local_run_argv(str(root.resolve()), dep.local_port,
+        _run(local_run_argv(str(root.resolve()), local_port,
                             str(broker_dir.resolve()), broker_secret,
                             dep.local_container(), dep.router_image()))
-        _run(serve_argv(dep.https_port, dep.auth_port))
+        _run(serve_argv(dep.https_port, auth_port))
     except ExposeError:
         _run_quiet(serve_off_argv(dep.https_port))
         _run_quiet(["docker", "rm", "-f", dep.auth_container()])
@@ -259,7 +304,7 @@ def gateway_up(root: Path) -> dict:
         shutil.rmtree(gdir, ignore_errors=True)
         raise
     return {"url": f"https://{host}/", "redirect_uri": redirect,
-            "local_url": f"http://127.0.0.1:{dep.local_port}/",
+            "local_url": f"http://127.0.0.1:{local_port}/",
             "no_whitelist": no_whitelist}
 
 
@@ -296,7 +341,9 @@ def local_view_url(root: Path) -> str:
     dep = load_deployment(root)
     if not gateway_running(dep):
         raise ExposeError("gateway is not up — `crew gateway up` first.")
-    return f"http://127.0.0.1:{dep.local_port}/"
+    ports = gateway_ports(root)
+    local_port = ports["local"] if ports else dep.local_port
+    return f"http://127.0.0.1:{local_port}/"
 
 
 def gateway_running(dep, run_capture=_run_capture) -> bool:
