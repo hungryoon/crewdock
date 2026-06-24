@@ -275,7 +275,15 @@ def status(root: Path, name: str) -> Instance:
 
 
 def list(root: Path) -> list[Instance]:
-    return [status(root, name) for name in paths.list_instance_names(root)]
+    # A single corrupt instance (e.g. unparseable meta.json) must not abort the
+    # whole list — skip it rather than blowing up `crew list` for everything.
+    out = []
+    for name in paths.list_instance_names(root):
+        try:
+            out.append(status(root, name))
+        except CrewError:
+            continue
+    return out
 
 
 _LIFECYCLE = {"start", "stop", "restart"}

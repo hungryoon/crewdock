@@ -53,6 +53,16 @@ def test_gateway_dir(tmp_path):
     assert paths.gateway_dir(tmp_path) == tmp_path / "instances" / "_gateway"
 
 
+def test_read_meta_corrupt_raises_crewerror(tmp_path):
+    from crew.core import paths
+    from crew.core.errors import CrewError
+    d = tmp_path / "instances" / "alice"
+    d.mkdir(parents=True)
+    (d / "meta.json").write_text("{ not json")
+    with pytest.raises(CrewError):
+        paths.read_meta(tmp_path, "alice")
+
+
 def test_credentials_dir_and_path(tmp_path):
     from crew.core import paths
     assert paths.credentials_dir(tmp_path) == tmp_path / "credentials"

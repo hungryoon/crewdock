@@ -62,7 +62,7 @@ def test_gateway_up_builds_runs_and_serves(tmp_path, monkeypatch):
     monkeypatch.setattr(gateway, "_run_quiet", lambda argv: cmds.append(("q", argv)))
     monkeypatch.setattr(gateway, "_run_capture",
         lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
-    monkeypatch.setattr(gateway, "_repo_root", lambda: "/repo")
+    monkeypatch.setattr(gateway, "_repo_root", gateway._repo_root)
     monkeypatch.setattr(gateway, "_container_exists", lambda name: False)
     monkeypatch.setattr(gateway, "_port_free", lambda port: True)
     monkeypatch.setattr(gateway, "_https_port_served", lambda port: False)
@@ -117,7 +117,7 @@ def test_gateway_up_rolls_back_on_run_failure(tmp_path, monkeypatch):
     _published(tmp_path)
     monkeypatch.setattr(gateway, "_run_capture",
         lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
-    monkeypatch.setattr(gateway, "_repo_root", lambda: "/repo")
+    monkeypatch.setattr(gateway, "_repo_root", gateway._repo_root)
     monkeypatch.setattr(gateway, "_container_exists", lambda name: False)
     monkeypatch.setattr(gateway, "_port_free", lambda port: True)
     monkeypatch.setattr(gateway, "_https_port_served", lambda port: False)
@@ -162,6 +162,21 @@ def test_gateway_up_errors_on_busy_port(tmp_path, monkeypatch):
     monkeypatch.setattr(gateway, "_container_exists", lambda name: False)
     monkeypatch.setattr(gateway, "_port_free", lambda port: False)
     with pytest.raises(ExposeError, match="in use"):
+        gateway.gateway_up(tmp_path)
+
+
+def test_gateway_up_errors_when_build_context_missing(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    _published(tmp_path)
+    monkeypatch.setattr(gateway, "_run_capture",
+        lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
+    monkeypatch.setattr(gateway, "_container_exists", lambda name: False)
+    monkeypatch.setattr(gateway, "_port_free", lambda port: True)
+    monkeypatch.setattr(gateway, "_https_port_served", lambda port: False)
+    empty = tmp_path / "empty_repo"
+    empty.mkdir()
+    monkeypatch.setattr(gateway, "_repo_root", lambda: str(empty))
+    with pytest.raises(ExposeError, match="source checkout"):
         gateway.gateway_up(tmp_path)
 
 

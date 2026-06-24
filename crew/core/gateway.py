@@ -115,6 +115,14 @@ def _repo_root() -> str:
     return str(Path(__file__).resolve().parent.parent.parent)
 
 
+def _require_build_context(repo_root: str) -> None:
+    df = Path(repo_root) / "crew" / "gateway" / "Dockerfile"
+    if not df.exists():
+        raise ExposeError(
+            "gateway build context not found — run crewdock from a source "
+            "checkout (`uv sync` + `uv run crew ...`), not an installed package")
+
+
 def gateway_up(root: Path) -> dict:
     cfg = load_shared_oauth(root)
     dep = load_deployment(root)
@@ -140,6 +148,8 @@ def gateway_up(root: Path) -> dict:
         raise ExposeError(
             f"tailnet HTTPS port {dep.https_port} is already served — "
             f"pick another CREW_GATEWAY_HTTPS_PORT or stop the other gateway")
+
+    _require_build_context(_repo_root())
 
     gdir = paths.gateway_dir(root)
     gdir.mkdir(parents=True, exist_ok=True)

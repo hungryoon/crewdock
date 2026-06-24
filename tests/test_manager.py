@@ -249,6 +249,24 @@ def test_list_returns_all_instances(root, monkeypatch):
     assert names == ["alice", "bob"]
 
 
+def test_list_survives_corrupt_instance(root, monkeypatch):
+    _agents_dir(root)
+    monkeypatch.setattr(manager, "_compose_state", lambda root, name, project: "running")
+    # good instance: valid meta.json + instance.env with CREW_PORT
+    good = paths.instance_dir(root, "alice")
+    good.mkdir(parents=True)
+    paths.write_meta(root, "alice", {"type": "hermes", "image": "img:1"})
+    paths.instance_env_path(root, "alice").write_text("CREW_PORT=9120\n")
+    # bad instance: corrupt meta.json makes status() (via read_meta) raise CrewError
+    bad = paths.instance_dir(root, "zombie")
+    bad.mkdir(parents=True)
+    (bad / "meta.json").write_text("{ not json")
+    paths.instance_env_path(root, "zombie").write_text("CREW_PORT=9121\n")
+
+    names = [i.name for i in manager.list(root)]
+    assert names == ["alice"]
+
+
 def test_lifecycle_start_stop_restart(root, calls):
     _agents_dir(root)
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})

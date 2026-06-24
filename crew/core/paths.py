@@ -7,7 +7,7 @@ from pathlib import Path
 from filelock import FileLock
 
 from .creds import parse_env_file
-from .errors import InvalidNameError
+from .errors import CrewError, InvalidNameError
 
 NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,29}$")
 
@@ -67,7 +67,12 @@ def read_meta(root: Path, name: str) -> dict:
     path = instance_dir(root, name) / "meta.json"
     if not path.exists():
         return {}
-    return json.loads(path.read_text())
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise CrewError(
+            f"corrupt meta.json for instance (could not parse {path}): {exc}"
+        ) from exc
 
 
 def atomic_write_text(path: Path, text: str) -> None:
