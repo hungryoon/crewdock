@@ -69,9 +69,9 @@ def init(
         project = typer.prompt("project name")
     here = _here()
     try:
-        init_mod.init(here, project=project, https_port=https_port,
-                      router_port=router_port, auth_port=auth_port,
-                      local_port=local_port)
+        project = init_mod.init(here, project=project, https_port=https_port,
+                                router_port=router_port, auth_port=auth_port,
+                                local_port=local_port)
     except CrewError as exc:
         _fail(exc)
     _ok(f"initialized deployment [bold]{project}[/bold]")
