@@ -403,3 +403,68 @@ async def test_setup_proxies_broker_stream(aiohttp_client, monkeypatch, tmp_path
     assert any(f.get("done") for f in frames)
     # the broker receives the instance_id (hashed dir), so it execs the real container
     assert seen["instance"] == "alice-aaaaaa"
+
+
+@pytest.fixture
+def local_root(tmp_path, monkeypatch):
+    # one published instance (alice -> alice-aaaaaa) with an instance.env on disk
+    d = tmp_path / "data" / "instances" / "alice-aaaaaa"
+    d.mkdir(parents=True)
+    (d / "instance.env").write_text("CREW_PORT=9120\nCREW_ALLOWED_EMAILS=a@x.com\n")
+    paths.gateway_dir(tmp_path).mkdir(parents=True)
+    monkeypatch.setattr(router, "_root", lambda: tmp_path)
+    monkeypatch.setattr(router, "_published",
+        lambda: [Published("alice", "alice-aaaaaa", 9120, ["a@x.com"])])
+    monkeypatch.setattr(router, "_LOCAL_MODE", True)
+    return tmp_path
+
+
+async def test_emails_get_lists_current(aiohttp_client, local_root):
+    client = await aiohttp_client(router.build_app())
+    resp = await client.get("/_emails?instance=alice-aaaaaa")
+    assert resp.status == 200
+    assert (await resp.json())["emails"] == ["a@x.com"]
+
+
+async def test_emails_post_add_then_persists_and_unions(aiohttp_client, local_root):
+    client = await aiohttp_client(router.build_app())
+    resp = await client.post("/_emails", json={
+        "instance": "alice-aaaaaa", "action": "add", "email": "b@x.com"})
+    assert resp.status == 200
+    assert (await resp.json())["emails"] == ["a@x.com", "b@x.com"]
+    # written to instance.env and the union file oauth2-proxy reads
+    env = (local_root / "data" / "instances" / "alice-aaaaaa" / "instance.env").read_text()
+    assert "CREW_ALLOWED_EMAILS=a@x.com,b@x.com" in env
+    union = (paths.gateway_dir(local_root) / "emails.txt").read_text()
+    assert "b@x.com" in union
+
+
+async def test_emails_post_remove(aiohttp_client, local_root):
+    client = await aiohttp_client(router.build_app())
+    resp = await client.post("/_emails", json={
+        "instance": "alice-aaaaaa", "action": "remove", "email": "a@x.com"})
+    assert resp.status == 200
+    assert (await resp.json())["emails"] == []
+
+
+async def test_emails_invalid_email_400(aiohttp_client, local_root):
+    client = await aiohttp_client(router.build_app())
+    resp = await client.post("/_emails", json={
+        "instance": "alice-aaaaaa", "action": "add", "email": "no-at-sign"})
+    assert resp.status == 400
+
+
+async def test_emails_unknown_instance_404(aiohttp_client, local_root):
+    client = await aiohttp_client(router.build_app())
+    resp = await client.get("/_emails?instance=ghost")
+    assert resp.status == 404
+
+
+async def test_emails_forbidden_in_sso_mode(aiohttp_client, monkeypatch, published):
+    monkeypatch.setattr(router, "_LOCAL_MODE", False)
+    client = await aiohttp_client(router.build_app())
+    g = await client.get("/_emails?instance=alice-aaaaaa")
+    assert g.status == 403
+    p = await client.post("/_emails", json={
+        "instance": "alice-aaaaaa", "action": "add", "email": "b@x.com"})
+    assert p.status == 403

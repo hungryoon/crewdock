@@ -250,12 +250,55 @@ async def _setup(request: web.Request) -> web.StreamResponse:
     return ws
 
 
+def _email_ok(e: str) -> bool:
+    return bool(e) and "@" in e and "," not in e and not any(c.isspace() for c in e)
+
+
+async def _emails_get(request: web.Request) -> web.Response:
+    if not _LOCAL_MODE:
+        raise web.HTTPForbidden()
+    iid = request.query.get("instance", "")
+    if not any(p.instance_id == iid for p in _published()):
+        raise web.HTTPNotFound()
+    return web.json_response({"emails": discovery.instance_emails(_root(), iid)})
+
+
+async def _emails_post(request: web.Request) -> web.Response:
+    if not _LOCAL_MODE:
+        raise web.HTTPForbidden()
+    try:
+        data = await request.json()
+    except (ValueError, aiohttp.ContentTypeError):
+        raise web.HTTPBadRequest(text="invalid json")
+    iid = data.get("instance", "")
+    action = data.get("action", "")
+    email = (data.get("email") or "").strip()
+    if not any(p.instance_id == iid for p in _published()):
+        raise web.HTTPNotFound()
+    if action not in ("add", "remove"):
+        raise web.HTTPBadRequest(text="invalid action")
+    if not _email_ok(email):
+        raise web.HTTPBadRequest(text="invalid email")
+    root = _root()
+    current = discovery.instance_emails(root, iid)
+    if action == "add":
+        if email not in current:
+            current = current + [email]
+    else:
+        current = [e for e in current if e != email]
+    updated = discovery.set_instance_emails(root, iid, current)
+    discovery.write_union_emails(root)
+    return web.json_response({"emails": updated})
+
+
 def build_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", _index)
     app.router.add_get("/_assets/{name}", _assets)
     app.router.add_get("/_status.json", _status_json)
     app.router.add_get("/_setup", _setup)
+    app.router.add_get("/_emails", _emails_get)
+    app.router.add_post("/_emails", _emails_post)
     app.router.add_route("*", "/i/{tail:.*}", _proxy)
     return app
 
