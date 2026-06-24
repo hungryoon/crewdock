@@ -22,6 +22,10 @@ _EMAIL_HEADER = "X-Forwarded-Email"
 _GATEWAY_SECRET = os.environ.get("CREW_GATEWAY_SECRET") or None
 _BROKER_SOCK = os.environ.get("CREW_BROKER_SOCK") or None
 _BROKER_SECRET = os.environ.get("CREW_BROKER_SECRET") or None
+# Local view: the SAME router app run as a loopback-only container with NO
+# oauth2-proxy. Skip the secret check, show ALL instances, authorize everyone
+# (the local operator). Unset (SSO deployment) = normal per-email behavior.
+_LOCAL_MODE = bool(os.environ.get("CREW_LOCAL_MODE"))
 
 
 def _root() -> Path:
@@ -72,7 +76,8 @@ async def _probe_up(port: int) -> bool:
 async def _gather_cards(email: str) -> list[dict]:
     """Build display cards for the instances this email may see."""
     root = _root()
-    pubs = [p for p in _published() if email in p.allowed_emails]
+    pubs = _published() if _LOCAL_MODE else [
+        p for p in _published() if email in p.allowed_emails]
 
     async def build(p):
         meta = paths.read_meta(root, p.name)
@@ -96,19 +101,30 @@ async def _gather_cards(email: str) -> list[dict]:
 
 
 def _require_gateway(request: web.Request) -> None:
+    if _LOCAL_MODE:
+        return
     if not routing.gateway_secret_ok(dict(request.headers), _GATEWAY_SECRET):
         raise web.HTTPForbidden(text="gateway authentication required")
 
 
+def _authorized(email: str, name: str, pubs) -> bool:
+    return True if _LOCAL_MODE else routing.authorize(email, name, pubs)
+
+
+def _viewer_email(request: web.Request) -> str:
+    e = request.headers.get(_EMAIL_HEADER, "")
+    return e or ("local" if _LOCAL_MODE else "")
+
+
 async def _status_json(request: web.Request) -> web.Response:
     _require_gateway(request)
-    email = request.headers.get(_EMAIL_HEADER, "")
+    email = _viewer_email(request)
     return web.json_response(await _gather_cards(email))
 
 
 async def _index(request: web.Request) -> web.Response:
     _require_gateway(request)
-    email = request.headers.get(_EMAIL_HEADER, "")
+    email = _viewer_email(request)
     cards = await _gather_cards(email)
     return web.Response(text=routing.render_index(email, cards),
                         content_type="text/html")
@@ -120,7 +136,7 @@ def _is_websocket(request: web.Request) -> bool:
 
 async def _proxy(request: web.Request) -> web.StreamResponse:
     _require_gateway(request)
-    email = request.headers.get(_EMAIL_HEADER, "")
+    email = _viewer_email(request)
     parsed = routing.parse_instance_path(request.path)
     if parsed is None:
         raise web.HTTPNotFound()
@@ -129,7 +145,7 @@ async def _proxy(request: web.Request) -> web.StreamResponse:
     match = next((p for p in pubs if p.name == name), None)
     if match is None:
         raise web.HTTPNotFound()
-    if not routing.authorize(email, name, pubs):
+    if not _authorized(email, name, pubs):
         raise web.HTTPForbidden()
     prefix = f"/i/{name}"
     if _is_websocket(request):
@@ -197,11 +213,11 @@ async def _proxy_ws(request, port, tail, prefix) -> web.StreamResponse:
 
 async def _setup(request: web.Request) -> web.StreamResponse:
     _require_gateway(request)
-    email = request.headers.get(_EMAIL_HEADER, "")
+    email = _viewer_email(request)
     instance = request.query.get("instance", "")
     provider = request.query.get("provider", "")
     action = request.query.get("action", "add")
-    if not routing.authorize(email, instance, _published()):
+    if not _authorized(email, instance, _published()):
         raise web.HTTPForbidden()
     ws = web.WebSocketResponse()
     await ws.prepare(request)
@@ -240,6 +256,8 @@ def build_app() -> web.Application:
 
 
 def _require_secret_configured() -> None:
+    if _LOCAL_MODE:
+        return
     if not _GATEWAY_SECRET:
         raise SystemExit(
             "CREW_GATEWAY_SECRET is not set — refusing to start; the anti-spoof "

@@ -1,10 +1,12 @@
 import socket
+from pathlib import Path
 
 import aiohttp
 import pytest
 from aiohttp import web
 
-from crew.gateway import router
+from crew.core import paths
+from crew.gateway import discovery, router
 from crew.gateway.discovery import Published
 
 
@@ -311,6 +313,57 @@ async def test_setup_forbidden_for_unauthorized(aiohttp_client, monkeypatch):
     resp = await client.get("/_setup?instance=alice&provider=openai-codex",
                             headers={"X-Forwarded-Email": "nobody@z.com"})
     assert resp.status == 403
+
+
+def test_local_mode_require_gateway_noop(monkeypatch):
+    monkeypatch.setattr(router, "_LOCAL_MODE", True)
+    from aiohttp.test_utils import make_mocked_request
+    req = make_mocked_request("GET", "/", headers={})  # no secret/basic-auth
+    router._require_gateway(req)  # must NOT raise
+
+
+def test_local_mode_authorized_allows_all(monkeypatch):
+    monkeypatch.setattr(router, "_LOCAL_MODE", True)
+    assert router._authorized("anyone@x.com", "ghost", []) is True
+
+
+def test_local_mode_skips_secret_guard(monkeypatch):
+    monkeypatch.setattr(router, "_LOCAL_MODE", True)
+    monkeypatch.setattr(router, "_GATEWAY_SECRET", None)
+    router._require_secret_configured()  # must NOT raise
+
+
+def test_non_local_secret_guard_still_raises(monkeypatch):
+    monkeypatch.setattr(router, "_LOCAL_MODE", False)
+    monkeypatch.setattr(router, "_GATEWAY_SECRET", None)
+    with pytest.raises(SystemExit):
+        router._require_secret_configured()
+
+
+def test_non_local_authorized_defers_to_routing(monkeypatch):
+    monkeypatch.setattr(router, "_LOCAL_MODE", False)
+    monkeypatch.setattr(router, "_published",
+                        lambda: [Published("alice", 9120, ["a@x.com"])])
+    # unknown instance -> routing.authorize returns False
+    assert router._authorized("a@x.com", "ghost", router._published()) is False
+
+
+async def test_local_mode_gather_cards_shows_all(monkeypatch):
+    pubs = [Published("alice", 9120, ["a@x.com"]),
+            Published("bob", 9121, ["b@y.com"])]
+    monkeypatch.setattr(router, "_LOCAL_MODE", True)
+    monkeypatch.setattr(router, "_published", lambda: pubs)
+    monkeypatch.setattr(router, "_root", lambda: Path("/crew"))
+
+    async def fake_probe(port):
+        return True
+    monkeypatch.setattr(router, "_probe_up", fake_probe)
+    monkeypatch.setattr(paths, "read_meta", lambda root, name: {})
+    monkeypatch.setattr(discovery, "instance_model",
+                        lambda root, name: {"provider": "", "connected": False})
+
+    cards = await router._gather_cards("nobody@x.com")
+    assert sorted(c["name"] for c in cards) == ["alice", "bob"]
 
 
 async def test_setup_proxies_broker_stream(aiohttp_client, monkeypatch, tmp_path):
