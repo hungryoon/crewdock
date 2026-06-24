@@ -41,16 +41,16 @@ def _dep():
 
 
 def _full_shared(root):
-    inst = root / "instances"
-    inst.mkdir(parents=True, exist_ok=True)
-    (inst / "_shared.env").write_text(
+    data = root / "data"
+    (data / "instances").mkdir(parents=True, exist_ok=True)
+    (data / "_shared.env").write_text(
         "CREW_PROJECT=test\n"
         "CREW_GOOGLE_CLIENT_ID=cid\nCREW_GOOGLE_CLIENT_SECRET=sec\n"
         "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n")
 
 
 def _published(root, name="alice", port=9120, emails="a@x.com"):
-    d = root / "instances" / name
+    d = root / "data" / "instances" / name
     d.mkdir(parents=True, exist_ok=True)
     (d / "instance.env").write_text(f"CREW_PORT={port}\nCREW_ALLOWED_EMAILS={emails}\n")
 
@@ -76,7 +76,7 @@ def test_gateway_up_builds_runs_and_serves(tmp_path, monkeypatch):
     assert any(c[:2] == ["docker", "build"] for c in run)
     assert any(c[:2] == ["docker", "run"] for c in run)
     assert any(c[:2] == ["tailscale", "serve"] for c in run)
-    emails = (tmp_path / "instances" / "_gateway" / "emails.txt").read_text()
+    emails = (tmp_path / "data" / "_gateway" / "emails.txt").read_text()
     assert "a@x.com" in emails
 
 

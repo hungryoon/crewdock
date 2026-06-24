@@ -60,7 +60,7 @@ def test_create_passes_layers(monkeypatch, root):
 
 def test_layers_command_lists_pool(monkeypatch, root):
     _patch(monkeypatch, root)
-    (root / "layers" / "knowledge").mkdir(parents=True)
+    (root / "data" / "layers" / "knowledge").mkdir(parents=True)
     result = runner.invoke(cli.app, ["layers"])
     assert result.exit_code == 0
     assert "knowledge" in result.stdout
@@ -133,8 +133,8 @@ def test_create_passes_credentials(monkeypatch, root):
 
 def test_credentials_command_lists_names_and_keys(monkeypatch, root):
     _patch(monkeypatch, root)
-    (root / "credentials").mkdir()
-    (root / "credentials" / "anthropic.env").write_text(
+    (root / "data" / "credentials").mkdir(parents=True)
+    (root / "data" / "credentials" / "anthropic.env").write_text(
         "ANTHROPIC_API_KEY=secret\nANTHROPIC_BASE=x\n")
     result = runner.invoke(cli.app, ["credentials"])
     assert result.exit_code == 0

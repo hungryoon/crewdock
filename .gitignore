@@ -1,18 +1,5 @@
-# crew runtime state — never commit
-instances/*/data/
-instances/*/instance.env
-instances/*/docker-compose.yml
-instances/*/meta.json
-instances/_shared.env
-instances/*/expose/
-instances/_gateway/
-instances/*/exposed
-instances/.lock
-# keep the seed template
-!instances/_template/
-
-# credential bundles — secrets, never commit
-credentials/
+# all runtime state — never commit
+/data/
 
 # python
 __pycache__/

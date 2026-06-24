@@ -30,7 +30,7 @@ def load_shared_oauth(root: Path) -> ExposeConfig:
     missing = [k for k in _REQUIRED_SHARED if not shared.get(k)]
     if missing:
         raise ExposeError(
-            "missing Google OAuth config in instances/_shared.env: "
+            "missing Google OAuth config in data/_shared.env: "
             + ", ".join(missing)
             + "\nadd CREW_GOOGLE_CLIENT_ID, CREW_GOOGLE_CLIENT_SECRET, and "
               "CREW_OAUTH_COOKIE_SECRET."

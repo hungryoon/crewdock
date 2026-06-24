@@ -18,7 +18,7 @@ def test_load_manifest_parses_all_fields(manifest_file):
                                  "HERMES_DASHBOARD_SESSION_TOKEN"]
     assert m.mem_limit == "4g"
     assert m.cpus == 2
-    assert m.seed_config == "_template/config.yaml"
+    assert m.seed_config == "seed/config.yaml"
 
 
 def test_load_manifest_network_defaults(manifest_file):

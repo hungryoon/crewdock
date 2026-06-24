@@ -5,8 +5,8 @@ from crew.core.errors import NotInitializedError, CrewError, InvalidNameError
 
 
 def _shared(root, body):
-    (root / "instances").mkdir(parents=True, exist_ok=True)
-    (root / "instances" / "_shared.env").write_text(body)
+    (root / "data").mkdir(parents=True, exist_ok=True)
+    (root / "data" / "_shared.env").write_text(body)
 
 
 def test_load_defaults_ports(tmp_path):
@@ -32,7 +32,7 @@ def test_missing_project_raises_not_initialized(tmp_path):
 
 
 def test_no_shared_env_raises_not_initialized(tmp_path):
-    (tmp_path / "instances").mkdir()
+    (tmp_path / "data").mkdir()
     with pytest.raises(NotInitializedError):
         load_deployment(tmp_path)
 

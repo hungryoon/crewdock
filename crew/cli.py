@@ -25,7 +25,7 @@ def _here() -> Path:
 
 
 def _root() -> Path:
-    """Deployment root: nearest ancestor of cwd with instances/_shared.env."""
+    """Deployment root: nearest ancestor of cwd with data/_shared.env."""
     try:
         return paths.find_root(_here())
     except CrewError as exc:
@@ -80,7 +80,7 @@ def init(
     _console.print()
     _console.print("next")
     _console.print("  [dim]1[/dim]  set CREW_GOOGLE_CLIENT_ID / "
-                   "CREW_GOOGLE_CLIENT_SECRET in [cyan]instances/_shared.env[/cyan]")
+                   "CREW_GOOGLE_CLIENT_SECRET in [cyan]data/_shared.env[/cyan]")
     _console.print("  [dim]2[/dim]  [cyan]crew create <name>[/cyan]")
     _console.print("  [dim]3[/dim]  [cyan]crew gateway up[/cyan]")
 

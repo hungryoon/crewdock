@@ -1,15 +1,9 @@
 import secrets
-import shutil
 from pathlib import Path
 
 from .creds import parse_env_file
 from .errors import CrewError
 from . import paths
-
-
-def _repo_root() -> str:
-    # crewdock checkout root: crew/core/init.py -> repo root is 3 parents up.
-    return str(Path(__file__).resolve().parent.parent.parent)
 
 
 def init(root: Path, project: str, https_port: int = 443,
@@ -21,20 +15,11 @@ def init(root: Path, project: str, https_port: int = 443,
         existing = parse_env_file(shared)["CREW_PROJECT"]
         raise CrewError(f"already initialized (project '{existing}')")
 
-    for sub in ("instances", "agents", "layers", "credentials"):
-        (root / sub).mkdir(parents=True, exist_ok=True)
-    root.chmod(0o700)
-    (root / "credentials").chmod(0o700)
-
-    repo = Path(_repo_root())
-    for manifest in (repo / "agents").glob("*.yaml"):
-        dst = root / "agents" / manifest.name
-        if manifest.resolve() != dst.resolve():
-            shutil.copy(manifest, dst)
-    src_tmpl = repo / "instances" / "_template"
-    dst_tmpl = root / "instances" / "_template"
-    if src_tmpl.exists() and not dst_tmpl.exists():
-        shutil.copytree(src_tmpl, dst_tmpl)
+    data = paths.data_dir(root)
+    for sub in ("instances", "layers", "credentials"):
+        (data / sub).mkdir(parents=True, exist_ok=True)
+    data.chmod(0o700)
+    (data / "credentials").chmod(0o700)
 
     cookie = secrets.token_urlsafe(32)
     shared.write_text(

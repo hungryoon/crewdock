@@ -140,7 +140,7 @@ def create(root: Path, name: str, type: str, creds: dict,
             (inst_dir / "data").mkdir(parents=True)
             inst_dir.chmod(0o700)
             if manifest.seed_config:
-                tmpl = root / "instances" / "_template" / "config.yaml"
+                tmpl = paths.seed_config_path(root)
                 if tmpl.exists():
                     shutil.copy(tmpl, inst_dir / "data" / "config.yaml")
             _write_instance_env(root, name, port, creds,

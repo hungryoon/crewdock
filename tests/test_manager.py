@@ -104,7 +104,7 @@ def test_create_rollback_on_up_failure(root, monkeypatch):
 
 def test_create_with_layers_mounts_and_records_them(root, calls):
     _agents_dir(root)
-    (root / "layers" / "knowledge").mkdir(parents=True)
+    (root / "data" / "layers" / "knowledge").mkdir(parents=True)
     inst = manager.create(root, "alice", type="hermes",
                           creds={"TELEGRAM_BOT_TOKEN": "t"}, layers=["knowledge"])
     assert inst.name == "alice"
@@ -297,7 +297,7 @@ def test_update_backup_snapshots_data(root, calls):
 
 def test_update_rerenders_compose_for_layer_changes(root, calls):
     _agents_dir(root)
-    (root / "layers" / "knowledge").mkdir(parents=True)
+    (root / "data" / "layers" / "knowledge").mkdir(parents=True)
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     # operator adds a layer by editing meta.json, then updates
     meta = paths.read_meta(root, "alice")
@@ -310,7 +310,7 @@ def test_update_rerenders_compose_for_layer_changes(root, calls):
 
 def test_create_env_file_order_shared_then_instance(root, monkeypatch):
     _agents_dir(root)
-    (root / "instances" / "_shared.env").write_text("CREW_PROJECT=test\nHERMES_UID=501\n")
+    (root / "data" / "_shared.env").write_text("CREW_PROJECT=test\nHERMES_UID=501\n")
     recorded = {}
 
     def fake_run(project, compose_file, env_files, args, capture=False):
@@ -354,8 +354,8 @@ def test_create_regenerates_union(root, calls, monkeypatch):
 
 def test_create_validates_and_records_credentials(root, calls):
     _agents_dir(root)
-    (root / "credentials").mkdir()
-    (root / "credentials" / "anthropic.env").write_text("ANTHROPIC_API_KEY=secret\n")
+    (root / "data" / "credentials").mkdir(parents=True)
+    (root / "data" / "credentials" / "anthropic.env").write_text("ANTHROPIC_API_KEY=secret\n")
     manager.create(root, "alice", type="hermes",
                    creds={"TELEGRAM_BOT_TOKEN": "t"}, credentials=["anthropic"])
     assert paths.read_meta(root, "alice")["credentials"] == ["anthropic"]
@@ -375,9 +375,9 @@ def test_create_unknown_credential_rejected(root, calls):
 
 def test_env_files_order_shared_then_credentials_then_instance(root, calls):
     _agents_dir(root)
-    (root / "instances" / "_shared.env").write_text("CREW_PROJECT=test\nHERMES_UID=501\n")
-    (root / "credentials").mkdir()
-    (root / "credentials" / "anthropic.env").write_text("ANTHROPIC_API_KEY=secret\n")
+    (root / "data" / "_shared.env").write_text("CREW_PROJECT=test\nHERMES_UID=501\n")
+    (root / "data" / "credentials").mkdir(parents=True)
+    (root / "data" / "credentials" / "anthropic.env").write_text("ANTHROPIC_API_KEY=secret\n")
     manager.create(root, "alice", type="hermes",
                    creds={"TELEGRAM_BOT_TOKEN": "t"}, credentials=["anthropic"])
     files = manager._env_files(root, "alice")
@@ -388,8 +388,8 @@ def test_env_files_order_shared_then_credentials_then_instance(root, calls):
 
 def test_update_reapplies_credentials(root, calls):
     _agents_dir(root)
-    (root / "credentials").mkdir()
-    (root / "credentials" / "anthropic.env").write_text("ANTHROPIC_API_KEY=secret\n")
+    (root / "data" / "credentials").mkdir(parents=True)
+    (root / "data" / "credentials" / "anthropic.env").write_text("ANTHROPIC_API_KEY=secret\n")
     manager.create(root, "alice", type="hermes",
                    creds={"TELEGRAM_BOT_TOKEN": "t"}, credentials=["anthropic"])
     paths.compose_path(root, "alice").write_text("stale\n")

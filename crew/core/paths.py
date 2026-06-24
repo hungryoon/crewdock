@@ -23,18 +23,22 @@ def validate_name(name: str) -> None:
 
 def find_root(start: Path) -> Path:
     """Nearest ancestor of `start` (inclusive) that is an initialized crewdock
-    deployment (has instances/_shared.env). Raises CrewError if none."""
+    deployment (has data/_shared.env). Raises CrewError if none."""
     cur = start.resolve()
     for d in (cur, *cur.parents):
-        if (d / "instances" / "_shared.env").is_file():
+        if (d / "data" / "_shared.env").is_file():
             return d
     raise CrewError(
         "no crewdock deployment here — run `crew init <project>` in your "
         "deployment directory, or cd into one")
 
 
+def data_dir(root: Path) -> Path:
+    return root / "data"
+
+
 def instances_dir(root: Path) -> Path:
-    return root / "instances"
+    return data_dir(root) / "instances"
 
 
 def instance_dir(root: Path, name: str) -> Path:
@@ -46,11 +50,11 @@ def project_name(project: str, name: str) -> str:
 
 
 def shared_env_path(root: Path) -> Path:
-    return instances_dir(root) / "_shared.env"
+    return data_dir(root) / "_shared.env"
 
 
 def gateway_dir(root: Path) -> Path:
-    return instances_dir(root) / "_gateway"
+    return data_dir(root) / "_gateway"
 
 
 def instance_env_path(root: Path, name: str) -> Path:
@@ -115,7 +119,7 @@ def read_port(root: Path, name: str) -> int | None:
 
 
 def layers_dir(root: Path) -> Path:
-    return root / "layers"
+    return data_dir(root) / "layers"
 
 
 def list_layers(root: Path) -> list[str]:
@@ -126,8 +130,12 @@ def list_layers(root: Path) -> list[str]:
 
 
 def credentials_dir(root: Path) -> Path:
-    return root / "credentials"
+    return data_dir(root) / "credentials"
 
 
 def credential_path(root: Path, name: str) -> Path:
     return credentials_dir(root) / f"{name}.env"
+
+
+def seed_config_path(root: Path) -> Path:
+    return root / "seed" / "config.yaml"

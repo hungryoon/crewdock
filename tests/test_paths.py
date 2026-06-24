@@ -15,20 +15,20 @@ def test_validate_name_rejects(bad):
 
 
 def test_list_instance_names_ignores_underscore_dirs(root):
-    (root / "instances" / "alice").mkdir()
-    (root / "instances" / "_template").mkdir()
-    (root / "instances" / "bob").mkdir()
+    (root / "data" / "instances" / "alice").mkdir()
+    (root / "data" / "instances" / "_template").mkdir()
+    (root / "data" / "instances" / "bob").mkdir()
     assert paths.list_instance_names(root) == ["alice", "bob"]
 
 
 def test_meta_roundtrip(root):
-    (root / "instances" / "alice").mkdir()
+    (root / "data" / "instances" / "alice").mkdir()
     paths.write_meta(root, "alice", {"type": "hermes", "port": 9120})
     assert paths.read_meta(root, "alice")["port"] == 9120
 
 
 def test_read_port_from_instance_env(root):
-    d = root / "instances" / "alice"
+    d = root / "data" / "instances" / "alice"
     d.mkdir()
     (d / "instance.env").write_text("CREW_PORT=9123\n")
     assert paths.read_port(root, "alice") == 9123
@@ -39,8 +39,8 @@ def test_project_name(root):
 
 
 def test_list_layers(root):
-    (root / "layers" / "knowledge").mkdir(parents=True)
-    (root / "layers" / "brand-voice").mkdir()
+    (root / "data" / "layers" / "knowledge").mkdir(parents=True)
+    (root / "data" / "layers" / "brand-voice").mkdir()
     assert paths.list_layers(root) == ["brand-voice", "knowledge"]
 
 
@@ -48,15 +48,35 @@ def test_list_layers_empty_when_no_dir(root):
     assert paths.list_layers(root) == []
 
 
+def test_instances_dir(tmp_path):
+    from crew.core import paths
+    assert paths.instances_dir(tmp_path) == tmp_path / "data" / "instances"
+
+
+def test_shared_env_path(tmp_path):
+    from crew.core import paths
+    assert paths.shared_env_path(tmp_path) == tmp_path / "data" / "_shared.env"
+
+
 def test_gateway_dir(tmp_path):
     from crew.core import paths
-    assert paths.gateway_dir(tmp_path) == tmp_path / "instances" / "_gateway"
+    assert paths.gateway_dir(tmp_path) == tmp_path / "data" / "_gateway"
+
+
+def test_layers_dir(tmp_path):
+    from crew.core import paths
+    assert paths.layers_dir(tmp_path) == tmp_path / "data" / "layers"
+
+
+def test_seed_config_path(tmp_path):
+    from crew.core import paths
+    assert paths.seed_config_path(tmp_path) == tmp_path / "seed" / "config.yaml"
 
 
 def test_read_meta_corrupt_raises_crewerror(tmp_path):
     from crew.core import paths
     from crew.core.errors import CrewError
-    d = tmp_path / "instances" / "alice"
+    d = tmp_path / "data" / "instances" / "alice"
     d.mkdir(parents=True)
     (d / "meta.json").write_text("{ not json")
     with pytest.raises(CrewError):
@@ -65,23 +85,23 @@ def test_read_meta_corrupt_raises_crewerror(tmp_path):
 
 def test_credentials_dir_and_path(tmp_path):
     from crew.core import paths
-    assert paths.credentials_dir(tmp_path) == tmp_path / "credentials"
+    assert paths.credentials_dir(tmp_path) == tmp_path / "data" / "credentials"
     assert paths.credential_path(tmp_path, "anthropic") == \
-        tmp_path / "credentials" / "anthropic.env"
+        tmp_path / "data" / "credentials" / "anthropic.env"
 
 
 def test_find_root_at_cwd(tmp_path):
     from crew.core import paths
-    (tmp_path / "instances").mkdir()
-    (tmp_path / "instances" / "_shared.env").write_text("CREW_PROJECT=x\n")
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "_shared.env").write_text("CREW_PROJECT=x\n")
     assert paths.find_root(tmp_path) == tmp_path.resolve()
 
 
 def test_find_root_from_subdir(tmp_path):
     from crew.core import paths
-    (tmp_path / "instances").mkdir()
-    (tmp_path / "instances" / "_shared.env").write_text("CREW_PROJECT=x\n")
-    sub = tmp_path / "instances" / "ted"
+    (tmp_path / "data" / "instances").mkdir(parents=True)
+    (tmp_path / "data" / "_shared.env").write_text("CREW_PROJECT=x\n")
+    sub = tmp_path / "data" / "instances" / "ted"
     sub.mkdir()
     assert paths.find_root(sub) == tmp_path.resolve()
 

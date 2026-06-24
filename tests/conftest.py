@@ -6,8 +6,8 @@ import pytest
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
     """A temp project root, initialized as deployment 'test'."""
-    (tmp_path / "instances").mkdir()
-    (tmp_path / "instances" / "_shared.env").write_text("CREW_PROJECT=test\n")
+    (tmp_path / "data" / "instances").mkdir(parents=True)
+    (tmp_path / "data" / "_shared.env").write_text("CREW_PROJECT=test\n")
     return tmp_path
 
 
@@ -39,7 +39,7 @@ resources:
   mem_limit: 4g
   cpus: 2
   shm_size: 1g
-seed_config: _template/config.yaml
+seed_config: seed/config.yaml
 """
 
 

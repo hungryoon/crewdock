@@ -226,7 +226,7 @@ def test_render_index_has_modal():
 def test_instance_model_connected(tmp_path):
     import json
     from crew.gateway import discovery
-    d = tmp_path / "instances" / "alice" / "data"
+    d = tmp_path / "data" / "instances" / "alice" / "data"
     d.mkdir(parents=True)
     (d / "auth.json").write_text(json.dumps(
         {"active_provider": "openai-codex", "credential_pool": ["openai-codex"]}))
@@ -237,12 +237,12 @@ def test_instance_model_connected(tmp_path):
 def test_instance_model_not_connected_or_missing(tmp_path):
     import json
     from crew.gateway import discovery
-    d = tmp_path / "instances" / "bob" / "data"
+    d = tmp_path / "data" / "instances" / "bob" / "data"
     d.mkdir(parents=True)
     (d / "auth.json").write_text(json.dumps(
         {"active_provider": "openai-codex", "credential_pool": []}))
     assert discovery.instance_model(tmp_path, "bob") == {
         "provider": "openai-codex", "connected": False}
-    (tmp_path / "instances" / "carol" / "data").mkdir(parents=True)
+    (tmp_path / "data" / "instances" / "carol" / "data").mkdir(parents=True)
     assert discovery.instance_model(tmp_path, "carol") == {
         "provider": "", "connected": False}

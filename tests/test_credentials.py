@@ -5,8 +5,8 @@ from crew.core.errors import CredentialNotFoundError
 
 
 def _cred(root, name, body):
-    d = root / "credentials"
-    d.mkdir(exist_ok=True)
+    d = root / "data" / "credentials"
+    d.mkdir(parents=True, exist_ok=True)
     (d / f"{name}.env").write_text(body)
 
 
@@ -31,8 +31,8 @@ def test_credential_files_in_order(tmp_path):
     _cred(tmp_path, "a", "K=1\n")
     _cred(tmp_path, "b", "K=2\n")
     files = credentials.credential_files(tmp_path, ["a", "b"])
-    assert files == [tmp_path / "credentials" / "a.env",
-                     tmp_path / "credentials" / "b.env"]
+    assert files == [tmp_path / "data" / "credentials" / "a.env",
+                     tmp_path / "data" / "credentials" / "b.env"]
 
 
 def test_credential_keys_union_order_preserving(tmp_path):

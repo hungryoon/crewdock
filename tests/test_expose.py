@@ -5,9 +5,9 @@ from crew.core.errors import ExposeError
 
 
 def _setup_shared(root, body):
-    inst = root / "instances"
-    inst.mkdir(exist_ok=True)
-    (inst / "_shared.env").write_text(body)
+    data = root / "data"
+    data.mkdir(exist_ok=True)
+    (data / "_shared.env").write_text(body)
 
 
 def test_serve_argv_on_and_off():
