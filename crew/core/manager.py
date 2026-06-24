@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import os
 import secrets
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -197,11 +200,15 @@ def remove(root: Path, name: str, purge: bool = False) -> None:
     gateway.regenerate_union_emails(root)
 
 
-def _on_rm_error(func, path, exc):
-    """rmtree (onexc) handler: agents create dirs without the write bit, which
+def _on_rm_error(func, path, _exc):
+    """rmtree error handler: agents create dirs without the write bit, which
     blocks unlinking their contents even for the owner. Restore write/exec on
     the entry and its parent, then retry — re-raises if genuinely un-permitted
-    (e.g. a root-owned file), which routes _purge_dir to the container fallback."""
+    (e.g. a root-owned file), which routes _purge_dir to the container fallback.
+
+    The third arg is the exception instance on Python >=3.12 (`onexc`) and an
+    exc_info tuple on <3.12 (`onerror`); we ignore it, so the same handler works
+    for both."""
     for target in (os.path.dirname(path), path):
         try:
             os.chmod(target, 0o700)
@@ -210,11 +217,17 @@ def _on_rm_error(func, path, exc):
     func(path)
 
 
+# shutil.rmtree renamed `onerror` -> `onexc` in 3.12 (the handler's 3rd arg also
+# changed from an exc_info tuple to the exception). Pick the right keyword so
+# purge works on every supported Python (>=3.11), not just our 3.14 dev box.
+_RMTREE_HANDLER_KW = "onexc" if sys.version_info >= (3, 12) else "onerror"
+
+
 def _try_rmtree(path: Path) -> bool:
     """Remove `path`, repairing unwritable dirs as it goes. Returns True if the
     tree is gone, False if residue the host can't touch remains."""
     try:
-        shutil.rmtree(path, onexc=_on_rm_error)
+        shutil.rmtree(path, **{_RMTREE_HANDLER_KW: _on_rm_error})
     except OSError:
         pass
     return not path.exists()
