@@ -323,6 +323,7 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
     <pre class="out" id="m-out"></pre>
   </div>
 </div>
+{emails_modal}
 <script>
   async function refresh() {{
     try {{
@@ -369,7 +370,6 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
   document.addEventListener("keydown", (e) => {{ if (e.key === "Escape") closeModal(); }});
 {emails_script}
 </script>
-{emails_modal}
 </body>
 </html>
 """

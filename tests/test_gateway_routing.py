@@ -253,6 +253,16 @@ def test_render_index_emails_button_local_only():
     assert ".elist" not in sso          # emails CSS must not leak into SSO output
 
 
+def test_render_index_emails_modal_before_script():
+    # The emails JS captures #emodal (and #e-* children) into top-level consts at
+    # parse time, so the modal must appear BEFORE the <script> block — exactly like
+    # the model #modal does. If it comes after, getElementById returns null and the
+    # click handler dereferences null, so the button does nothing.
+    cards = [{"name": "alice", "up": True, "instance_id": "alice-aaaaaa"}]
+    html = routing.render_index("local", cards, local=True)
+    assert html.index('id="emodal"') < html.index("<script>")
+
+
 def test_render_index_default_is_non_local():
     cards = [{"name": "alice", "up": True, "instance_id": "alice-aaaaaa"}]
     assert 'class="emails"' not in routing.render_index("a@x.com", cards)
