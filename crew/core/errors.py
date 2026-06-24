@@ -32,3 +32,7 @@ class ExposeError(CrewError):
 
 class CredentialNotFoundError(CrewError):
     """A requested --credential bundle is not in the credentials/ pool."""
+
+
+class NotInitializedError(CrewError):
+    pass
