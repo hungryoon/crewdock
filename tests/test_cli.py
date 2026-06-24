@@ -69,6 +69,7 @@ def test_layers_command_lists_pool(monkeypatch, root):
 def test_gateway_up_invokes_core(monkeypatch, root):
     _patch(monkeypatch, root)
     from crew.core import gateway
+    monkeypatch.setattr(gateway, "https_port_served", lambda r: False)
     monkeypatch.setattr(gateway, "gateway_up", lambda r: {
         "url": "https://h.ts.net/",
         "redirect_uri": "https://h.ts.net/oauth2/callback",
@@ -85,6 +86,7 @@ def test_gateway_up_invokes_core(monkeypatch, root):
 def test_gateway_up_warns_without_whitelist(monkeypatch, root):
     _patch(monkeypatch, root)
     from crew.core import gateway
+    monkeypatch.setattr(gateway, "https_port_served", lambda r: False)
     monkeypatch.setattr(gateway, "gateway_up", lambda r: {
         "url": "https://h.ts.net/",
         "redirect_uri": "https://h.ts.net/oauth2/callback",
@@ -94,6 +96,76 @@ def test_gateway_up_warns_without_whitelist(monkeypatch, root):
     assert result.exit_code == 0
     assert "CREW_ALLOWED_EMAILS" in result.stdout
     assert "팀 뷰" in result.stdout
+
+
+def _info():
+    return {
+        "url": "https://h.ts.net/",
+        "redirect_uri": "https://h.ts.net/oauth2/callback",
+        "local_url": "http://127.0.0.1:9402/",
+        "no_whitelist": False}
+
+
+def test_gateway_up_conflict_non_interactive_errors(monkeypatch, root):
+    _patch(monkeypatch, root)
+    from crew.core import gateway
+    called = []
+    monkeypatch.setattr(gateway, "https_port_served", lambda r: True)
+    monkeypatch.setattr(cli, "_interactive", lambda: False)
+    monkeypatch.setattr(gateway, "gateway_up",
+                        lambda r: called.append(r) or _info())
+    result = runner.invoke(cli.app, ["gateway", "up"])
+    assert result.exit_code != 0
+    assert "already served" in result.stdout + result.stderr
+    assert called == []  # core gateway_up not reached
+
+
+def test_gateway_up_conflict_take_over(monkeypatch, root):
+    _patch(monkeypatch, root)
+    from crew.core import gateway
+    served = iter([True, False])  # served once, freed after
+    freed = []
+    ran = []
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr(gateway, "https_port_served", lambda r: next(served))
+    monkeypatch.setattr(gateway, "free_https_port", lambda r: freed.append(r))
+    monkeypatch.setattr(gateway, "gateway_up",
+                        lambda r: ran.append(r) or _info())
+    result = runner.invoke(cli.app, ["gateway", "up"], input="1\n")
+    assert result.exit_code == 0, result.stdout
+    assert freed == [root]
+    assert ran == [root]
+
+
+def test_gateway_up_conflict_change_port(monkeypatch, root):
+    _patch(monkeypatch, root)
+    from crew.core import gateway
+    served = iter([True, False])  # configured port served, new one free
+    setp = []
+    ran = []
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr(gateway, "https_port_served", lambda r: next(served))
+    monkeypatch.setattr(gateway, "set_https_port",
+                        lambda r, p: setp.append((r, p)))
+    monkeypatch.setattr(gateway, "gateway_up",
+                        lambda r: ran.append(r) or _info())
+    result = runner.invoke(cli.app, ["gateway", "up"], input="2\n8443\n")
+    assert result.exit_code == 0, result.stdout
+    assert setp == [(root, 8443)]
+    assert ran == [root]
+
+
+def test_gateway_up_conflict_cancel(monkeypatch, root):
+    _patch(monkeypatch, root)
+    from crew.core import gateway
+    ran = []
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr(gateway, "https_port_served", lambda r: True)
+    monkeypatch.setattr(gateway, "gateway_up",
+                        lambda r: ran.append(r) or _info())
+    result = runner.invoke(cli.app, ["gateway", "up"], input="3\n")
+    assert result.exit_code != 0
+    assert ran == []
 
 
 def test_gateway_open_invokes_browser(monkeypatch, root):

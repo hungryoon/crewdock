@@ -39,6 +39,36 @@ def _https_port_served(port: int) -> bool:
     return str(port) in (data.get("TCP") or {})
 
 
+def https_port(root: Path) -> int:
+    return load_deployment(root).https_port
+
+
+def https_port_served(root: Path) -> bool:
+    return _https_port_served(load_deployment(root).https_port)
+
+
+def free_https_port(root: Path) -> None:
+    _run_quiet(serve_off_argv(load_deployment(root).https_port))
+
+
+def set_https_port(root: Path, port: int) -> None:
+    """Persist CREW_GATEWAY_HTTPS_PORT=<port> in data/_shared.env (replace the
+    line if present, else append), preserving other keys."""
+    p = paths.shared_env_path(root)
+    lines = p.read_text().splitlines()
+    out, found = [], False
+    for ln in lines:
+        if ln.startswith("CREW_GATEWAY_HTTPS_PORT="):
+            out.append(f"CREW_GATEWAY_HTTPS_PORT={port}")
+            found = True
+        else:
+            out.append(ln)
+    if not found:
+        out.append(f"CREW_GATEWAY_HTTPS_PORT={port}")
+    paths.atomic_write_text(p, "\n".join(out) + "\n")
+    p.chmod(0o600)
+
+
 def render_gateway_oauth2_env(cfg, authport: int, routerport: int,
                               redirect: str, gateway_secret: str) -> str:
     lines = [

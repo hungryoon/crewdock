@@ -260,3 +260,63 @@ def test_local_view_url_when_up(tmp_path, monkeypatch):
     _full_shared(tmp_path)
     monkeypatch.setattr(gateway, "gateway_running", lambda dep: True)
     assert gateway.local_view_url(tmp_path) == "http://127.0.0.1:9402/"
+
+
+# --- HTTPS-port conflict helpers ---
+
+from crew.core import paths as _paths
+from crew.core.creds import parse_env_file
+
+
+def test_set_https_port_replaces_preserving_other_keys(tmp_path):
+    _full_shared(tmp_path)
+    p = _paths.shared_env_path(tmp_path)
+    # baseline: default 443 (key absent), CREW_PROJECT present
+    assert parse_env_file(p).get("CREW_PROJECT") == "test"
+
+    gateway.set_https_port(tmp_path, 8443)
+
+    env = parse_env_file(p)
+    assert env["CREW_GATEWAY_HTTPS_PORT"] == "8443"
+    assert env["CREW_PROJECT"] == "test"
+    assert (p.stat().st_mode & 0o777) == 0o600
+
+    # replace again (line already present)
+    gateway.set_https_port(tmp_path, 9443)
+    env = parse_env_file(p)
+    assert env["CREW_GATEWAY_HTTPS_PORT"] == "9443"
+    assert env["CREW_PROJECT"] == "test"
+
+
+def test_set_https_port_appends_when_absent(tmp_path):
+    data = tmp_path / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    (data / "_shared.env").write_text("CREW_PROJECT=test\n")
+    gateway.set_https_port(tmp_path, 8443)
+    env = parse_env_file(_paths.shared_env_path(tmp_path))
+    assert env["CREW_GATEWAY_HTTPS_PORT"] == "8443"
+    assert env["CREW_PROJECT"] == "test"
+
+
+def test_https_port_default_and_custom(tmp_path):
+    _full_shared(tmp_path)
+    assert gateway.https_port(tmp_path) == 443
+    gateway.set_https_port(tmp_path, 8443)
+    assert gateway.https_port(tmp_path) == 8443
+
+
+def test_https_port_served_reflects_underlying(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    monkeypatch.setattr(gateway, "_https_port_served", lambda port: True)
+    assert gateway.https_port_served(tmp_path) is True
+    monkeypatch.setattr(gateway, "_https_port_served", lambda port: False)
+    assert gateway.https_port_served(tmp_path) is False
+
+
+def test_free_https_port_calls_serve_off(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    seen = []
+    monkeypatch.setattr(gateway, "_run_quiet", lambda argv: seen.append(argv))
+    gateway.free_https_port(tmp_path)
+    assert seen == [["tailscale", "serve", "--https=443", "off"]]
+    assert seen[0] == gateway.serve_off_argv(443)

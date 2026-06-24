@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from pathlib import Path
 from typing import NoReturn
 
@@ -124,11 +125,45 @@ gateway_app = typer.Typer(help="Single login gateway for all instance dashboards
 app.add_typer(gateway_app, name="gateway")
 
 
+def _interactive() -> bool:
+    return sys.stdin.isatty()
+
+
+def _resolve_https_conflict(root: Path) -> None:
+    """If the configured tailnet HTTPS port is already served, prompt the
+    operator to take it over, switch ports, or cancel. Non-interactive callers
+    get an actionable error instead."""
+    while gateway_mod.https_port_served(root):
+        port = gateway_mod.https_port(root)
+        if not _interactive():
+            _fail(CrewError(
+                f"tailnet HTTPS port {port} is already served — `crew gateway down` "
+                f"first, set CREW_GATEWAY_HTTPS_PORT in data/_shared.env, or run "
+                f"`crew gateway up` interactively to choose"))
+        choice = typer.prompt(
+            f"port {port} is already served on the tailnet (may be another service)\n"
+            f"  [1] take it over  [2] use a different port  [3] cancel\nchoose",
+            default="1")
+        if choice == "1":
+            gateway_mod.free_https_port(root)
+            if gateway_mod.https_port_served(root):
+                _fail(CrewError(
+                    f"couldn't free port {port} — run `tailscale serve reset` then retry"))
+            return
+        elif choice == "2":
+            newport = int(typer.prompt("new HTTPS port"))
+            gateway_mod.set_https_port(root, newport)
+        else:
+            raise typer.Abort()
+
+
 @gateway_app.command("up")
 def gateway_up():
     """Start the login gateway (one URL for all published instances)."""
+    root = _root()
     try:
-        info = gateway_mod.gateway_up(_root())
+        _resolve_https_conflict(root)
+        info = gateway_mod.gateway_up(root)
     except CrewError as exc:
         _fail(exc)
     _ok("gateway up")
