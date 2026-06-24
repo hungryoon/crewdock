@@ -1,6 +1,6 @@
 [project]
 name = "crewdock"
-version = "0.4.1"
+version = "0.4.2"
 description = "Host a crew of isolated AI-assistant agent containers from one CLI."
 requires-python = ">=3.11"
 dependencies = [
