@@ -30,13 +30,15 @@ def init(
     https_port: int = typer.Option(443, "--https-port"),
     router_port: int = typer.Option(9400, "--router-port"),
     auth_port: int = typer.Option(9401, "--auth-port"),
+    local_port: int = typer.Option(9402, "--local-port"),
 ):
     """Initialize CREW_ROOT as a new deployment (one-time setup)."""
     if not project:
         project = typer.prompt("project name")
     try:
         init_mod.init(_root(), project=project, https_port=https_port,
-                      router_port=router_port, auth_port=auth_port)
+                      router_port=router_port, auth_port=auth_port,
+                      local_port=local_port)
     except CrewError as exc:
         _fail(exc)
     typer.echo(f"initialized deployment '{project}' at {_root()}")

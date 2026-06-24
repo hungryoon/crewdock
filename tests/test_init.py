@@ -21,7 +21,7 @@ def test_init_scaffolds_root(tmp_path, monkeypatch):
     monkeypatch.setattr(init_mod, "_repo_root", lambda: str(repo))
     root = tmp_path / "deploy"
     init_mod.init(root, project="synt", https_port=8443,
-                  router_port=9500, auth_port=9501)
+                  router_port=9500, auth_port=9501, local_port=9600)
     for sub in ("instances", "agents", "layers", "credentials"):
         assert (root / sub).is_dir()
     assert (root / "agents" / "hermes.yaml").exists()
@@ -31,6 +31,7 @@ def test_init_scaffolds_root(tmp_path, monkeypatch):
     assert env["CREW_GATEWAY_HTTPS_PORT"] == "8443"
     assert env["CREW_ROUTER_PORT"] == "9500"
     assert env["CREW_AUTH_PORT"] == "9501"
+    assert env["CREW_GATEWAY_LOCAL_PORT"] == "9600"
     assert env["CREW_OAUTH_COOKIE_SECRET"]
     dep = load_deployment(root)
     assert dep.project == "synt" and dep.https_port == 8443
