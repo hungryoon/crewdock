@@ -3,7 +3,7 @@ import stat
 import pytest
 
 from crew.core import manager, paths
-from crew.core.errors import InstanceExistsError
+from crew.core.errors import CrewError, InstanceExistsError
 
 
 @pytest.fixture(autouse=True)
@@ -72,6 +72,14 @@ def test_create_rejects_duplicate(root, calls):
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     with pytest.raises(InstanceExistsError):
         manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+
+
+def test_create_errors_on_existing_namespaced_container(root, calls, monkeypatch):
+    _agents_dir(root)
+    import crew.core.manager as m
+    monkeypatch.setattr(m, "_container_exists", lambda name: name == "test-alice")
+    with pytest.raises(CrewError, match="already exists"):
+        manager.create(root, "alice", type="hermes", creds={})
 
 
 def test_create_second_instance_gets_next_port(root, calls):

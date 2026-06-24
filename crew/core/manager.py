@@ -94,6 +94,16 @@ def _ensure_session_token(root: Path, name: str) -> None:
         f.write(f"HERMES_DASHBOARD_SESSION_TOKEN={_new_session_token()}\n")
 
 
+def _container_exists(name: str) -> bool:
+    try:
+        out = subprocess.run(
+            ["docker", "ps", "-a", "-q", "-f", f"name=^{name}$"],
+            capture_output=True, text=True, check=False)
+    except Exception:
+        return False
+    return bool((out.stdout or "").strip())
+
+
 def _validate_layers(root: Path, layers: list[str]) -> None:
     available = set(paths.list_layers(root))
     for layer in layers:
@@ -118,6 +128,10 @@ def create(root: Path, name: str, type: str, creds: dict,
     with paths.lock(root):
         if inst_dir.exists():
             raise InstanceExistsError(f"instance already exists: {name}")
+        if _container_exists(dep.instance_project(name)):
+            raise CrewError(
+                f"container {dep.instance_project(name)} already exists — "
+                f"project name '{dep.project}' may be used by another deployment")
         port = find_free_port(reserved=_reserved_ports(root))
         try:
             (inst_dir / "data").mkdir(parents=True)
