@@ -80,10 +80,11 @@ async def _gather_cards(email: str) -> list[dict]:
         p for p in _published() if email in p.allowed_emails]
 
     async def build(p):
-        meta = paths.read_meta(root, p.name)
-        model = discovery.instance_model(root, p.name)
+        meta = paths.read_meta(root, p.instance_id)
+        model = discovery.instance_model(root, p.instance_id)
         return {
             "name": p.name,
+            "instance_id": p.instance_id,
             "up": await _probe_up(p.port),
             "image": routing.short_image(meta.get("image", "")),
             "timezone": meta.get("timezone", ""),
@@ -214,10 +215,14 @@ async def _proxy_ws(request, port, tail, prefix) -> web.StreamResponse:
 async def _setup(request: web.Request) -> web.StreamResponse:
     _require_gateway(request)
     email = _viewer_email(request)
-    instance = request.query.get("instance", "")
+    instance = request.query.get("instance", "")  # the instance_id (hashed dir)
     provider = request.query.get("provider", "")
     action = request.query.get("action", "add")
-    if not _authorized(email, instance, _published()):
+    pubs = _published()
+    # The model-setup card sends the instance_id; authorize via its base name,
+    # then forward the instance_id to the broker (it execs <project>-<instance_id>).
+    p = next((x for x in pubs if x.instance_id == instance), None)
+    if p is None or not _authorized(email, p.name, pubs):
         raise web.HTTPForbidden()
     ws = web.WebSocketResponse()
     await ws.prepare(request)

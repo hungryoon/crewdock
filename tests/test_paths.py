@@ -1,7 +1,49 @@
+import re
+
 import pytest
 
-from crew.core.errors import InvalidNameError
+from crew.core.errors import CrewError, InvalidNameError
 from crew.core import paths
+
+
+def test_new_instance_id_shape():
+    for _ in range(20):
+        iid = paths.new_instance_id("ted")
+        assert re.fullmatch(r"ted-[0-9a-f]{6}", iid)
+
+
+def test_resolve_instance_id_by_meta_name(root):
+    d = root / "data" / "instances" / "ted-aaaaaa"
+    d.mkdir(parents=True)
+    paths.write_meta(root, "ted-aaaaaa", {"name": "ted"})
+    assert paths.resolve_instance_id(root, "ted") == "ted-aaaaaa"
+
+
+def test_resolve_instance_id_full_id_exact_match(root):
+    d = root / "data" / "instances" / "ted-aaaaaa"
+    d.mkdir(parents=True)
+    paths.write_meta(root, "ted-aaaaaa", {"name": "ted"})
+    assert paths.resolve_instance_id(root, "ted-aaaaaa") == "ted-aaaaaa"
+
+
+def test_resolve_instance_id_none_when_absent(root):
+    assert paths.resolve_instance_id(root, "ghost") is None
+
+
+def test_resolve_instance_id_ambiguous_raises(root):
+    for hexid in ("aaaaaa", "bbbbbb"):
+        d = root / "data" / "instances" / f"ted-{hexid}"
+        d.mkdir(parents=True)
+        paths.write_meta(root, f"ted-{hexid}", {"name": "ted"})
+    with pytest.raises(CrewError, match="ambiguous"):
+        paths.resolve_instance_id(root, "ted")
+
+
+def test_instance_base_name_returns_meta_name(root):
+    d = root / "data" / "instances" / "ted-aaaaaa"
+    d.mkdir(parents=True)
+    paths.write_meta(root, "ted-aaaaaa", {"name": "ted"})
+    assert paths.instance_base_name(root, "ted-aaaaaa") == "ted"
 
 
 def test_validate_name_accepts_kebab(root):

@@ -11,8 +11,8 @@ def test_parse_instance_path():
 
 
 def test_authorize():
-    pubs = [Published("alice", 9120, ["a@x.com"]),
-            Published("bob", 9121, ["b@y.com"])]
+    pubs = [Published("alice", "alice-aaaaaa", 9120, ["a@x.com"]),
+            Published("bob", "bob-aaaaaa", 9121, ["b@y.com"])]
     assert routing.authorize("a@x.com", "alice", pubs) is True
     assert routing.authorize("b@y.com", "alice", pubs) is False  # not on alice
     assert routing.authorize("a@x.com", "ghost", pubs) is False  # unknown
@@ -21,7 +21,7 @@ def test_authorize():
 def test_authorize_empty_whitelist_is_fail_closed():
     # The canonical "hidden" state under publish-by-default: an instance with an
     # empty CREW_ALLOWED_EMAILS is reachable by no one (no marker gate anymore).
-    pubs = [Published("alice", 9120, [])]
+    pubs = [Published("alice", "alice-aaaaaa", 9120, [])]
     assert routing.authorize("a@x.com", "alice", pubs) is False
     assert routing.authorize("", "alice", pubs) is False
 
@@ -200,6 +200,23 @@ def test_render_index_has_setup_button_and_panel():
     assert 'data-setup="alice"' in html        # button hook
     assert "/_setup?" in html                   # JS opens the setup WS
     assert "openai-codex" in html               # provider option present
+
+
+def test_render_index_model_setup_carries_instance_id():
+    # The model-setup control targets the instance_id (hashed dir) so the broker
+    # execs the real container; the card title / dashboard link / refresh hook
+    # stay the base name.
+    from crew.gateway import routing
+    cards = [{"name": "ted", "instance_id": "ted-9b8c7d", "up": True,
+              "image": "v1", "timezone": "UTC", "created": "2026-06-23",
+              "type": "hermes", "port": 9120, "layers": [], "credentials": [],
+              "rollback": False}]
+    html = routing.render_index("a@x.com", cards)
+    assert 'data-setup="ted-9b8c7d"' in html      # WS targets the instance_id
+    assert 'data-label="ted"' in html             # modal title shows base name
+    assert 'data-name="ted"' in html              # refresh hook = base name
+    assert "/i/ted/" in html                       # dashboard link = base name
+    assert 'data-name="ted-9b8c7d"' not in html    # not the hashed id
 
 
 def test_render_index_llm_chip_connected_and_not_set():

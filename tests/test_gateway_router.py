@@ -12,7 +12,7 @@ from crew.gateway.discovery import Published
 
 @pytest.fixture
 def published(monkeypatch):
-    pubs = [Published("alice", 9120, ["a@x.com"])]
+    pubs = [Published("alice", "alice-aaaaaa", 9120, ["a@x.com"])]
     monkeypatch.setattr(router, "_published", lambda: pubs)
     return pubs
 
@@ -59,7 +59,7 @@ async def test_http_proxy_forwards_with_prefix(aiohttp_client, published, monkey
     up_client = await aiohttp_client(up)
     port = up_client.server.port
     monkeypatch.setattr(router, "_published",
-                        lambda: [Published("alice", port, ["a@x.com"])])
+                        lambda: [Published("alice", "alice-aaaaaa", port, ["a@x.com"])])
 
     client = await aiohttp_client(router.build_app())
     resp = await client.get("/i/alice/foo", headers={"X-Forwarded-Email": "a@x.com"})
@@ -82,7 +82,7 @@ async def test_ws_proxy_echo(aiohttp_client, monkeypatch):
     up_client = await aiohttp_client(up)
     port = up_client.server.port
     monkeypatch.setattr(router, "_published",
-                        lambda: [Published("alice", port, ["a@x.com"])])
+                        lambda: [Published("alice", "alice-aaaaaa", port, ["a@x.com"])])
     client = await aiohttp_client(router.build_app())
     ws = await client.ws_connect("/i/alice/api/pty",
                                  headers={"X-Forwarded-Email": "a@x.com"})
@@ -111,7 +111,7 @@ async def test_ws_proxy_rewrites_origin_to_upstream(aiohttp_client, monkeypatch)
     up_client = await aiohttp_client(up)
     port = up_client.server.port
     monkeypatch.setattr(router, "_published",
-                        lambda: [Published("alice", port, ["a@x.com"])])
+                        lambda: [Published("alice", "alice-aaaaaa", port, ["a@x.com"])])
     client = await aiohttp_client(router.build_app())
     ws = await client.ws_connect("/i/alice/api/pty",
                                  headers={"X-Forwarded-Email": "a@x.com",
@@ -142,7 +142,7 @@ async def test_ws_proxy_forwards_query_string(aiohttp_client, monkeypatch):
     up_client = await aiohttp_client(up)
     port = up_client.server.port
     monkeypatch.setattr(router, "_published",
-                        lambda: [Published("alice", port, ["a@x.com"])])
+                        lambda: [Published("alice", "alice-aaaaaa", port, ["a@x.com"])])
     client = await aiohttp_client(router.build_app())
     ws = await client.ws_connect("/i/alice/api/pty?token=secret&channel=c1",
                                  headers={"X-Forwarded-Email": "a@x.com"})
@@ -162,7 +162,7 @@ async def test_http_proxy_passes_compressed_body_unchanged(aiohttp_client, monke
     up_client = await aiohttp_client(up)
     port = up_client.server.port
     monkeypatch.setattr(router, "_published",
-                        lambda: [Published("alice", port, ["a@x.com"])])
+                        lambda: [Published("alice", "alice-aaaaaa", port, ["a@x.com"])])
     client = await aiohttp_client(router.build_app())
     # auto_decompress on the test client will gunzip; if Content-Encoding was
     # wrongly stripped by the router, decoding would fail / mismatch.
@@ -178,7 +178,7 @@ async def test_upstream_down_returns_502(aiohttp_client, monkeypatch):
         s.bind(("127.0.0.1", 0))
         dead_port = s.getsockname()[1]
     monkeypatch.setattr(router, "_published",
-                        lambda: [Published("alice", dead_port, ["a@x.com"])])
+                        lambda: [Published("alice", "alice-aaaaaa", dead_port, ["a@x.com"])])
     client = await aiohttp_client(router.build_app())
     resp = await client.get("/i/alice/x", headers={"X-Forwarded-Email": "a@x.com"})
     assert resp.status == 502
@@ -209,7 +209,7 @@ async def test_proxy_ok_with_correct_gateway_secret(aiohttp_client, monkeypatch)
     up_client = await aiohttp_client(up)
     port = up_client.server.port
     monkeypatch.setattr(router, "_published",
-                        lambda: [Published("alice", port, ["a@x.com"])])
+                        lambda: [Published("alice", "alice-aaaaaa", port, ["a@x.com"])])
     monkeypatch.setattr(router, "_GATEWAY_SECRET", "S3CRET")
     client = await aiohttp_client(router.build_app())
     auth = "Basic " + base64.b64encode(b"a@x.com:S3CRET").decode()
@@ -228,7 +228,7 @@ async def test_status_json_returns_authorized_cards(aiohttp_client, monkeypatch)
     up_client = await aiohttp_client(up)
     port = up_client.server.port
     monkeypatch.setattr(router, "_published",
-                        lambda: [Published("alice", port, ["a@x.com"])])
+                        lambda: [Published("alice", "alice-aaaaaa", port, ["a@x.com"])])
     monkeypatch.setattr(router, "_probe_cache", {})
     client = await aiohttp_client(router.build_app())
     resp = await client.get("/_status.json", headers={"X-Forwarded-Email": "a@x.com"})
@@ -240,7 +240,7 @@ async def test_status_json_returns_authorized_cards(aiohttp_client, monkeypatch)
 
 async def test_status_json_hides_unauthorized(aiohttp_client, monkeypatch):
     monkeypatch.setattr(router, "_published",
-                        lambda: [Published("alice", 9120, ["a@x.com"])])
+                        lambda: [Published("alice", "alice-aaaaaa", 9120, ["a@x.com"])])
     monkeypatch.setattr(router, "_probe_cache", {})
     client = await aiohttp_client(router.build_app())
     resp = await client.get("/_status.json", headers={"X-Forwarded-Email": "nobody@z.com"})
@@ -307,10 +307,10 @@ async def test_probe_up_caches_within_ttl(aiohttp_client, monkeypatch):
 
 async def test_setup_forbidden_for_unauthorized(aiohttp_client, monkeypatch):
     monkeypatch.setattr(router, "_published",
-                        lambda: [Published("alice", 9120, ["a@x.com"])])
+                        lambda: [Published("alice", "alice-aaaaaa", 9120, ["a@x.com"])])
     monkeypatch.setattr(router, "_BROKER_SOCK", "/nope.sock")
     client = await aiohttp_client(router.build_app())
-    resp = await client.get("/_setup?instance=alice&provider=openai-codex",
+    resp = await client.get("/_setup?instance=alice-aaaaaa&provider=openai-codex",
                             headers={"X-Forwarded-Email": "nobody@z.com"})
     assert resp.status == 403
 
@@ -343,14 +343,14 @@ def test_non_local_secret_guard_still_raises(monkeypatch):
 def test_non_local_authorized_defers_to_routing(monkeypatch):
     monkeypatch.setattr(router, "_LOCAL_MODE", False)
     monkeypatch.setattr(router, "_published",
-                        lambda: [Published("alice", 9120, ["a@x.com"])])
+                        lambda: [Published("alice", "alice-aaaaaa", 9120, ["a@x.com"])])
     # unknown instance -> routing.authorize returns False
     assert router._authorized("a@x.com", "ghost", router._published()) is False
 
 
 async def test_local_mode_gather_cards_shows_all(monkeypatch):
-    pubs = [Published("alice", 9120, ["a@x.com"]),
-            Published("bob", 9121, ["b@y.com"])]
+    pubs = [Published("alice", "alice-aaaaaa", 9120, ["a@x.com"]),
+            Published("bob", "bob-aaaaaa", 9121, ["b@y.com"])]
     monkeypatch.setattr(router, "_LOCAL_MODE", True)
     monkeypatch.setattr(router, "_published", lambda: pubs)
     monkeypatch.setattr(router, "_root", lambda: Path("/crew"))
@@ -364,6 +364,10 @@ async def test_local_mode_gather_cards_shows_all(monkeypatch):
 
     cards = await router._gather_cards("nobody@x.com")
     assert sorted(c["name"] for c in cards) == ["alice", "bob"]
+    # each card carries its instance_id for the model-setup broker exec
+    by_name = {c["name"]: c for c in cards}
+    assert by_name["alice"]["instance_id"] == "alice-aaaaaa"
+    assert by_name["bob"]["instance_id"] == "bob-aaaaaa"
 
 
 async def test_setup_proxies_broker_stream(aiohttp_client, monkeypatch, tmp_path):
@@ -373,7 +377,10 @@ async def test_setup_proxies_broker_stream(aiohttp_client, monkeypatch, tmp_path
     import tempfile
     sockpath = tempfile.mktemp(suffix=".sock", dir="/tmp")
 
+    seen = {}
+
     async def fake_exec(request):
+        seen["instance"] = request.query.get("instance")
         ws = web.WebSocketResponse(); await ws.prepare(request)
         await ws.send_json({"line": "url: https://x"})
         await ws.send_json({"line": "code: AB-CD"})
@@ -384,13 +391,15 @@ async def test_setup_proxies_broker_stream(aiohttp_client, monkeypatch, tmp_path
     bsite = web.UnixSite(brunner, sockpath); await bsite.start()
 
     monkeypatch.setattr(router, "_published",
-                        lambda: [Published("alice", 9120, ["a@x.com"])])
+                        lambda: [Published("alice", "alice-aaaaaa", 9120, ["a@x.com"])])
     monkeypatch.setattr(router, "_BROKER_SOCK", sockpath)
     monkeypatch.setattr(router, "_BROKER_SECRET", None)
     client = await aiohttp_client(router.build_app())
-    ws = await client.ws_connect("/_setup?instance=alice&provider=openai-codex",
+    ws = await client.ws_connect("/_setup?instance=alice-aaaaaa&provider=openai-codex",
                                  headers={"X-Forwarded-Email": "a@x.com"})
     frames = [msg.json() async for msg in ws]
     await brunner.cleanup()
     assert any("https://x" in f.get("line", "") for f in frames)
     assert any(f.get("done") for f in frames)
+    # the broker receives the instance_id (hashed dir), so it execs the real container
+    assert seen["instance"] == "alice-aaaaaa"

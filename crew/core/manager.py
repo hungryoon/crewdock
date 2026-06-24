@@ -123,17 +123,18 @@ def create(root: Path, name: str, type: str, creds: dict,
     paths.validate_name(name)
     validate_timezone(tz)
     dep = load_deployment(root)
-    inst_dir = paths.instance_dir(root, name)
     manifest = load_manifest(_manifest_path(root, type))
     _validate_layers(root, layers)
     _credentials.validate_credentials(root, credentials)
 
     with paths.lock(root):
-        if inst_dir.exists():
+        if paths.resolve_instance_id(root, name) is not None:
             raise InstanceExistsError(f"instance already exists: {name}")
-        if _container_exists(dep.instance_project(name)):
+        iid = paths.new_instance_id(name)
+        inst_dir = paths.instance_dir(root, iid)
+        if _container_exists(dep.instance_project(iid)):
             raise CrewError(
-                f"container {dep.instance_project(name)} already exists — "
+                f"container {dep.instance_project(iid)} already exists — "
                 f"project name '{dep.project}' may be used by another deployment")
         port = find_free_port(reserved=_reserved_ports(root))
         try:
@@ -143,24 +144,24 @@ def create(root: Path, name: str, type: str, creds: dict,
                 tmpl = paths.seed_config_path(root)
                 if tmpl.exists():
                     shutil.copy(tmpl, inst_dir / "data" / "config.yaml")
-            _write_instance_env(root, name, port, creds,
+            _write_instance_env(root, iid, port, creds,
                                 host_user_env=manifest.host_user_env)
             cred_keys = _credentials.credential_keys(root, credentials)
-            paths.compose_path(root, name).write_text(
-                render_compose(manifest, name, port, layers=layers,
+            paths.compose_path(root, iid).write_text(
+                render_compose(manifest, iid, port, layers=layers,
                                credential_keys=cred_keys, image=manifest.image,
                                timezone=tz, project=dep.project)
             )
-            paths.write_meta(root, name, {
-                "type": type, "port": port, "image": manifest.image,
+            paths.write_meta(root, iid, {
+                "name": name, "type": type, "port": port, "image": manifest.image,
                 "layers": layers, "credentials": credentials,
                 "timezone": tz,
                 "created_at": _stamp(),
             })
             run_compose(
-                dep.instance_project(name),
-                paths.compose_path(root, name),
-                _env_files(root, name),
+                dep.instance_project(iid),
+                paths.compose_path(root, iid),
+                _env_files(root, iid),
                 ["up", "-d"],
             )
         except Exception:
@@ -178,22 +179,26 @@ def create(root: Path, name: str, type: str, creds: dict,
                     timezone=tz, state="running")
 
 
-def _require_exists(root: Path, name: str) -> None:
-    if not paths.instance_dir(root, name).exists():
+def _resolve(root: Path, name: str) -> str:
+    """Resolve a user-facing identifier to an instance_id (dir name), raising
+    InstanceNotFoundError if absent."""
+    iid = paths.resolve_instance_id(root, name)
+    if iid is None:
         raise InstanceNotFoundError(f"no such instance: {name}")
+    return iid
 
 
 def remove(root: Path, name: str, purge: bool = False) -> None:
-    _require_exists(root, name)
+    iid = _resolve(root, name)
     dep = load_deployment(root)
     run_compose(
-        dep.instance_project(name),
-        paths.compose_path(root, name),
-        _env_files(root, name),
+        dep.instance_project(iid),
+        paths.compose_path(root, iid),
+        _env_files(root, iid),
         ["down"],
     )
     if purge:
-        _purge_dir(paths.instance_dir(root, name))
+        _purge_dir(paths.instance_dir(root, iid))
     # Keep the gateway SSO allowlist in sync with the surviving instances'
     # whitelists (no-op when the gateway is down — emails.txt won't exist).
     from crew.core import gateway
@@ -271,18 +276,18 @@ def _compose_state(root: Path, name: str, project: str) -> str:
 
 
 def status(root: Path, name: str) -> Instance:
-    _require_exists(root, name)
+    iid = _resolve(root, name)
     dep = load_deployment(root)
-    meta = paths.read_meta(root, name)
-    port = paths.read_port(root, name) or 0
+    meta = paths.read_meta(root, iid)
+    port = paths.read_port(root, iid) or 0
     return Instance(
-        name=name,
+        name=paths.instance_base_name(root, iid),
         type=meta.get("type", "unknown"),
         port=port,
         image=meta.get("image", "unknown"),
         previous_image=meta.get("previous_image", ""),
         timezone=meta.get("timezone", DEFAULT_TIMEZONE),
-        state=_compose_state(root, name, dep.project),
+        state=_compose_state(root, iid, dep.project),
         created_at=meta.get("created_at", ""),
     )
 
@@ -290,10 +295,23 @@ def status(root: Path, name: str) -> Instance:
 def list(root: Path) -> list[Instance]:
     # A single corrupt instance (e.g. unparseable meta.json) must not abort the
     # whole list — skip it rather than blowing up `crew list` for everything.
+    # Build each Instance directly from its instance_id (dir name) to avoid a
+    # base-name -> id round-trip through status().
+    dep = load_deployment(root)
     out = []
-    for name in paths.list_instance_names(root):
+    for iid in paths.list_instance_names(root):
         try:
-            out.append(status(root, name))
+            meta = paths.read_meta(root, iid)
+            out.append(Instance(
+                name=paths.instance_base_name(root, iid),
+                type=meta.get("type", "unknown"),
+                port=paths.read_port(root, iid) or 0,
+                image=meta.get("image", "unknown"),
+                previous_image=meta.get("previous_image", ""),
+                timezone=meta.get("timezone", DEFAULT_TIMEZONE),
+                state=_compose_state(root, iid, dep.project),
+                created_at=meta.get("created_at", ""),
+            ))
         except CrewError:
             continue
     return out
@@ -303,37 +321,37 @@ _LIFECYCLE = {"start", "stop", "restart"}
 
 
 def lifecycle(root: Path, name: str, action: str) -> None:
-    _require_exists(root, name)
+    iid = _resolve(root, name)
     dep = load_deployment(root)
     if action not in _LIFECYCLE:
         raise ValueError(f"unknown lifecycle action: {action}")
     run_compose(
-        dep.instance_project(name),
-        paths.compose_path(root, name),
-        _env_files(root, name),
+        dep.instance_project(iid),
+        paths.compose_path(root, iid),
+        _env_files(root, iid),
         [action],
     )
 
 
 def logs(root: Path, name: str, follow: bool = False) -> None:
     """Stream logs by exec-ing docker compose directly (inherits stdio)."""
-    _require_exists(root, name)
+    iid = _resolve(root, name)
     dep = load_deployment(root)
     args = ["logs"] + (["-f"] if follow else [])
     subprocess.run(
-        compose_argv(dep.instance_project(name), paths.compose_path(root, name),
-                     _env_files(root, name), args),
+        compose_argv(dep.instance_project(iid), paths.compose_path(root, iid),
+                     _env_files(root, iid), args),
         check=False,
     )
 
 
 def shell_argv(root: Path, name: str) -> list[str]:
-    _require_exists(root, name)
+    iid = _resolve(root, name)
     dep = load_deployment(root)
     return compose_argv(
-        dep.instance_project(name),
-        paths.compose_path(root, name),
-        _env_files(root, name),
+        dep.instance_project(iid),
+        paths.compose_path(root, iid),
+        _env_files(root, iid),
         ["exec", "agent", "sh"],
     )
 
@@ -363,7 +381,7 @@ def update(root: Path, name: str, backup: bool = False,
     (restores meta+compose if pull/up fails). rollback=True swaps
     current/previous. to_default=True repins to the manifest image.
     With backup=True, snapshot data/ first."""
-    _require_exists(root, name)
+    iid = _resolve(root, name)
     dep = load_deployment(root)
     _exclusive = [f for f, v in (("--image", image is not None),
                                  ("--rollback", rollback),
@@ -371,42 +389,42 @@ def update(root: Path, name: str, backup: bool = False,
     if len(_exclusive) > 1:
         raise CrewError(
             "choose only one of --image / --rollback / --to-default")
-    _ensure_session_token(root, name)
+    _ensure_session_token(root, iid)
     if backup:
-        src = paths.instance_dir(root, name) / "data"
-        dst = paths.instance_dir(root, name) / f"data.bak-{_stamp()}"
+        src = paths.instance_dir(root, iid) / "data"
+        dst = paths.instance_dir(root, iid) / f"data.bak-{_stamp()}"
         shutil.copytree(src, dst)
-    meta = paths.read_meta(root, name)
+    meta = paths.read_meta(root, iid)
     manifest = load_manifest(_manifest_path(root, meta.get("type", "")))
     current = meta.get("image", manifest.image)
     if tz is not None:
         validate_timezone(tz)
         meta["timezone"] = tz
-        paths.write_meta(root, name, meta)
-    project = dep.instance_project(name)
-    compose_file = paths.compose_path(root, name)
-    env_files = _env_files(root, name)
+        paths.write_meta(root, iid, meta)
+    project = dep.instance_project(iid)
+    compose_file = paths.compose_path(root, iid)
+    env_files = _env_files(root, iid)
 
     if rollback:
         prev = meta.get("previous_image")
         if not prev:
             raise CrewError("no previous image to roll back to")
-        _repin(root, name, meta, manifest, target=prev, new_previous=current,
+        _repin(root, iid, meta, manifest, target=prev, new_previous=current,
                project=dep.project)
         return
 
     if to_default:
-        _repin(root, name, meta, manifest,
+        _repin(root, iid, meta, manifest,
                target=manifest.image, new_previous=current, project=dep.project)
         return
 
     if image is None:
-        _render_instance(root, name, meta, manifest, current, dep.project)
+        _render_instance(root, iid, meta, manifest, current, dep.project)
         run_compose(project, compose_file, env_files, ["pull"])
         run_compose(project, compose_file, env_files, ["up", "-d"])
         return
 
-    _repin(root, name, meta, manifest, target=image, new_previous=current,
+    _repin(root, iid, meta, manifest, target=image, new_previous=current,
            project=dep.project)
 
 

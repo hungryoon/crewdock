@@ -22,7 +22,10 @@ def render_compose(
 ) -> str:
     """Render docker-compose.yml text. `port` is recorded by the caller into
     instance.env as CREW_PORT; the compose file references it via ${CREW_PORT}.
-    `layers` are mounted read-only under manifest.layers_mount."""
+    `layers` are mounted read-only under manifest.layers_mount.
+
+    NOTE: `name` here is the instance_id (the hashed dir name, e.g. `ted-9b8c7d`);
+    callers pass the full instance_id so container_name = `<project>-<name>-<hex>`."""
     env = Environment(
         loader=FileSystemLoader(str(_TEMPLATES)),
         undefined=StrictUndefined,

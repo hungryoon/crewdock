@@ -6,11 +6,12 @@ from crew.core import paths
 from crew.core.creds import parse_env_file
 
 
-def instance_model(root: Path, name: str) -> dict:
+def instance_model(root: Path, instance_id: str) -> dict:
     """{'provider': <active LLM provider or ''>, 'connected': bool} from the
     instance's data/auth.json (host-readable via the ro mount). `connected` means
-    the active provider has a credential in the pool. {'','False'} if absent."""
-    path = paths.instance_dir(root, name) / "data" / "auth.json"
+    the active provider has a credential in the pool. {'','False'} if absent.
+    Takes the instance_id (dir name)."""
+    path = paths.instance_dir(root, instance_id) / "data" / "auth.json"
     try:
         d = json.loads(path.read_text())
     except (OSError, ValueError):
@@ -22,25 +23,27 @@ def instance_model(root: Path, name: str) -> dict:
 
 @dataclass
 class Published:
-    name: str
+    name: str          # base name (display, proxy /i/<name>/, authorize)
+    instance_id: str   # dir/container suffix (for broker exec)
     port: int
     allowed_emails: list[str]
 
 
-def _emails(root: Path, name: str) -> list[str]:
-    env = parse_env_file(paths.instance_env_path(root, name))
+def _emails(root: Path, instance_id: str) -> list[str]:
+    env = parse_env_file(paths.instance_env_path(root, instance_id))
     return [e.strip() for e in env.get("CREW_ALLOWED_EMAILS", "").split(",")
             if e.strip()]
 
 
 def published_instances(root: Path) -> list[Published]:
     out = []
-    for name in paths.list_instance_names(root):
-        port = paths.read_port(root, name)
+    for iid in paths.list_instance_names(root):
+        port = paths.read_port(root, iid)
         if not port:
             continue
-        out.append(Published(name=name, port=port,
-                             allowed_emails=_emails(root, name)))
+        out.append(Published(name=paths.instance_base_name(root, iid),
+                             instance_id=iid, port=port,
+                             allowed_emails=_emails(root, iid)))
     return out
 
 

@@ -129,6 +129,9 @@ def render_index(email: str, cards: list[dict]) -> str:
     if cards:
         def row(c: dict) -> str:
             name = _html.escape(c["name"])
+            # The model-setup control targets the instance_id (hashed dir) so the
+            # broker execs the real container; everything else uses the base name.
+            iid = _html.escape(c.get("instance_id", c["name"]))
             chips = "".join(f'<span class="kv">{kv}</span>' for kv in _detail_kvs(c))
             if c.get("rollback"):
                 chips += '<span class="kv rb">&#8629; rollback</span>'
@@ -146,7 +149,7 @@ def render_index(email: str, cards: list[dict]) -> str:
                 f'<span class="name">{name}</span>'
                 f'<span class="state">{"running" if c["up"] else "down"}</span>'
                 f'{llm}'
-                f'<button class="setup" data-setup="{name}">&#9881; model</button>'
+                f'<button class="setup" data-setup="{iid}" data-label="{name}">&#9881; model</button>'
                 f'<a class="go" href="/i/{name}/">dashboard</a>'
                 f'</div>\n'
                 f'        <div class="detail">{chips}</div>\n'
@@ -264,6 +267,7 @@ def render_index(email: str, cards: list[dict]) -> str:
   }}
   setInterval(refresh, 10000);
   let setupWs = null;
+  let setupInstanceId = "";   // hashed instance_id the broker execs
   const modal = document.getElementById("modal");
   const mInst = document.getElementById("m-inst");
   const mProv = document.getElementById("m-prov");
@@ -274,15 +278,14 @@ def render_index(email: str, cards: list[dict]) -> str:
   }}
   document.addEventListener("click", (e) => {{
     const b = e.target.closest(".setup");
-    if (b) {{ mInst.textContent = b.dataset.setup; mOut.textContent = ""; modal.hidden = false; return; }}
+    if (b) {{ setupInstanceId = b.dataset.setup; mInst.textContent = b.dataset.label || b.dataset.setup; mOut.textContent = ""; modal.hidden = false; return; }}
     if (e.target === modal || e.target.closest("#m-close")) {{ closeModal(); return; }}
     if (e.target.closest("#m-start")) {{
-      const name = mInst.textContent;
       const prov = mProv.value;
       mOut.textContent = "starting...\\n";
       const proto = location.protocol === "https:" ? "wss:" : "ws:";
       setupWs = new WebSocket(proto + "//" + location.host
-        + "/_setup?instance=" + encodeURIComponent(name)
+        + "/_setup?instance=" + encodeURIComponent(setupInstanceId)
         + "&provider=" + encodeURIComponent(prov));
       setupWs.onmessage = (ev) => {{
         const d = JSON.parse(ev.data);

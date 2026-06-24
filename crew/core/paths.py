@@ -10,6 +10,36 @@ from .creds import parse_env_file
 from .errors import CrewError, InvalidNameError
 
 NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,29}$")
+_HASH_RE = re.compile(r"-[0-9a-f]{6}$")
+
+
+def new_instance_id(name: str) -> str:
+    from . import ids
+    return f"{name}-{ids.token()}"
+
+
+def resolve_instance_id(root: Path, name: str) -> str | None:
+    """Resolve a user identifier to an instance_id (dir name): an exact dir name
+    (full id) wins; else the single dir whose meta `name` matches. Raises
+    CrewError if ambiguous (>1 base-name match). None if absent."""
+    idir = instances_dir(root)
+    if not idir.exists():
+        return None
+    if (idir / name).is_dir():
+        return name
+    matches = [d.name for d in idir.iterdir()
+               if d.is_dir() and not d.name.startswith("_")
+               and read_meta(root, d.name).get("name") == name]
+    if len(matches) > 1:
+        raise CrewError(
+            f"ambiguous instance {name!r} — multiple match "
+            f"({', '.join(sorted(matches))}); use the full id")
+    return matches[0] if matches else None
+
+
+def instance_base_name(root: Path, instance_id: str) -> str:
+    m = read_meta(root, instance_id)
+    return m.get("name") or _HASH_RE.sub("", instance_id)
 
 
 def validate_name(name: str) -> None:
