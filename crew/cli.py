@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import NoReturn
 
 import typer
+from rich.console import Console
+from rich.table import Table
+from rich import box
 
 from .core import manager
 from .core import gateway as gateway_mod
@@ -13,10 +16,32 @@ from .core.errors import CrewError
 
 app = typer.Typer(help="Host a crew of isolated AI-assistant agent containers.")
 
+# Wide width so long dashboard URLs are never truncated in non-tty capture.
+_console = Console(width=120)
+
 
 def _root() -> Path:
     """Project root = $CREW_ROOT or the current working directory."""
     return Path(os.environ.get("CREW_ROOT", "."))
+
+
+def _ok(msg: str) -> None:
+    """Print a green check success line."""
+    _console.print(f"[green]✓[/green] {msg}")
+
+
+def _kv(key: str, value: str, width: int = 11) -> None:
+    """Print a dim-key / value detail line indented under a header."""
+    _console.print(f"  [dim]{key:<{width}}[/dim] {value}")
+
+
+def _state_style(state: str) -> str:
+    """rich style name for an instance state."""
+    if state == "running":
+        return "green"
+    if state == "stopped":
+        return "yellow"
+    return "red"
 
 
 def _fail(exc: Exception) -> NoReturn:
@@ -41,9 +66,15 @@ def init(
                       local_port=local_port)
     except CrewError as exc:
         _fail(exc)
-    typer.echo(f"initialized deployment '{project}' at {_root()}")
-    typer.echo("  next: set CREW_GOOGLE_CLIENT_ID/SECRET in "
-               "instances/_shared.env, then `crew create` + `crew gateway up`")
+    _ok(f"initialized deployment [bold]{project}[/bold]")
+    _kv("root", f"[cyan]{_root()}[/cyan]")
+    _kv("gateway", f":{https_port} team · :{local_port} local")
+    _console.print()
+    _console.print("next")
+    _console.print("  [dim]1[/dim]  set CREW_GOOGLE_CLIENT_ID / "
+                   "CREW_GOOGLE_CLIENT_SECRET in [cyan]instances/_shared.env[/cyan]")
+    _console.print("  [dim]2[/dim]  [cyan]crew create <name>[/cyan]")
+    _console.print("  [dim]3[/dim]  [cyan]crew gateway up[/cyan]")
 
 
 @app.command()
@@ -64,8 +95,9 @@ def create(
                               layers=layer, credentials=credential, tz=timezone)
     except CrewError as exc:
         _fail(exc)
-    typer.echo(f"created {inst.name} ({inst.type}) -> {inst.dashboard_url} "
-               f"[port {inst.port}]")
+    _ok(f"created [bold]{inst.name}[/bold]  [dim]({inst.type})[/dim]")
+    _kv("dashboard", f"[cyan]{inst.dashboard_url}[/cyan]")
+    _kv("port", str(inst.port))
 
 
 @app.command()
@@ -91,11 +123,12 @@ def gateway_up():
         info = gateway_mod.gateway_up(_root())
     except CrewError as exc:
         _fail(exc)
-    typer.echo("gateway up")
-    typer.echo(f"  team  (Google SSO)    -> {info['url']}")
-    typer.echo(f"  local (all instances) -> {info['local_url']}")
-    typer.echo("  add this redirect URI to your Google OAuth client (once):")
-    typer.echo(f"    {info['redirect_uri']}")
+    _ok("gateway up")
+    _kv("team", f"[cyan]{info['url']}[/cyan]  [dim](Google SSO)[/dim]", width=6)
+    _kv("local", f"[cyan]{info['local_url']}[/cyan]  [dim](all instances)[/dim]", width=6)
+    _console.print()
+    _console.print("register this redirect URI in your Google OAuth client (once):")
+    _console.print(f"  [cyan]{info['redirect_uri']}[/cyan]")
 
 
 @gateway_app.command("down")
@@ -135,10 +168,20 @@ def list_():
     """List instances."""
     instances = manager.list(_root())
     if not instances:
-        typer.echo("No instances.")
+        _console.print("[dim]No instances.[/dim]")
         return
+    table = Table(box=box.SIMPLE)
+    table.add_column("NAME")
+    table.add_column("TYPE")
+    table.add_column("STATE")
+    table.add_column("DASHBOARD", overflow="fold")
     for i in instances:
-        typer.echo(f"{i.name:20} {i.type:10} {i.state:9} {i.dashboard_url}")
+        table.add_row(
+            i.name, i.type,
+            f"[{_state_style(i.state)}]{i.state}[/{_state_style(i.state)}]",
+            i.dashboard_url,
+        )
+    _console.print(table)
 
 
 @app.command()
@@ -148,11 +191,14 @@ def status(name: str):
         i = manager.status(_root(), name)
     except CrewError as exc:
         _fail(exc)
-    line = (f"{i.name}: {i.state}  type={i.type}  image={i.image}  "
-            f"tz={i.timezone}  {i.dashboard_url}")
+    style = _state_style(i.state)
+    _console.print(f"[bold]{i.name}[/bold]  [{style}]●[/{style}] {i.state}")
+    _kv("type", i.type)
+    _kv("image", i.image)
+    _kv("timezone", i.timezone)
+    _kv("dashboard", f"[cyan]{i.dashboard_url}[/cyan]")
     if i.previous_image:
-        line += f"\n  rollback available: {i.previous_image}"
-    typer.echo(line)
+        _kv("rollback", i.previous_image)
 
 
 @app.command()

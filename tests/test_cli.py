@@ -172,7 +172,8 @@ def test_cli_status_shows_rollback_available(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "_root", lambda: tmp_path)
     result = runner.invoke(cli.app, ["status", "alice"])
     assert result.exit_code == 0
-    assert "rollback available: img:latest" in result.stdout
+    assert "rollback" in result.stdout
+    assert "img:latest" in result.stdout
 
 
 def test_cli_create_timezone_forwarded(monkeypatch, tmp_path):
@@ -211,7 +212,7 @@ def test_cli_status_shows_timezone(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "_root", lambda: tmp_path)
     result = runner.invoke(cli.app, ["status", "alice"])
     assert result.exit_code == 0
-    assert "tz=Asia/Seoul" in result.stdout
+    assert "Asia/Seoul" in result.stdout
 
 
 def test_init_invokes_core(monkeypatch, root):
