@@ -1,8 +1,11 @@
+import json
 import secrets
 import shutil
+import socket
 from pathlib import Path
 
 from crew.core import paths
+from crew.core.deployment import load_deployment
 from crew.core.errors import ExposeError
 from crew.core.expose import (
     OAUTH2_IMAGE, load_shared_oauth, _run, _run_quiet, _run_capture,
@@ -10,16 +13,30 @@ from crew.core.expose import (
 )
 from crew.gateway import discovery
 
-ROUTER_IMAGE = "crewdock-gateway-router:local"
-ROUTER_CONTAINER = "crew-gateway-router"
-GATEWAY_AUTH_CONTAINER = "crew-gateway-auth"
-ROUTER_PORT = 9400
-GATEWAY_AUTH_PORT = 9401
-GATEWAY_HTTPS_PORT = 443
-BROKER_IMAGE = "crewdock-gateway-broker:local"
-BROKER_CONTAINER = "crew-gateway-broker"
 BROKER_SOCK_DIR_CONTAINER = "/run/crew-broker"
 BROKER_SOCK = "/run/crew-broker/broker.sock"
+
+
+def _container_exists(name: str) -> bool:
+    out = _run_capture(["docker", "ps", "-a", "-q", "-f", f"name=^{name}$"])
+    return bool((out or "").strip())
+
+
+def _port_free(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+
+def _https_port_served(port: int) -> bool:
+    try:
+        data = json.loads(_run_capture(["tailscale", "serve", "status", "--json"]))
+    except Exception:
+        return False
+    return str(port) in (data.get("TCP") or {})
 
 
 def render_gateway_oauth2_env(cfg, authport: int, routerport: int,
@@ -46,38 +63,40 @@ def render_gateway_oauth2_env(cfg, authport: int, routerport: int,
     return "\n".join(lines) + "\n"
 
 
-def router_build_argv(repo_root: str) -> list[str]:
+def router_build_argv(repo_root: str, image: str) -> list[str]:
     repo_root = str(repo_root)
     return [
-        "docker", "build", "-t", ROUTER_IMAGE,
+        "docker", "build", "-t", image,
         "-f", f"{repo_root}/crew/gateway/Dockerfile", repo_root,
     ]
 
 
-def broker_build_argv(repo_root: str) -> list[str]:
+def broker_build_argv(repo_root: str, image: str) -> list[str]:
     repo_root = str(repo_root)
     return [
-        "docker", "build", "-t", BROKER_IMAGE,
+        "docker", "build", "-t", image,
         "-f", f"{repo_root}/crew/gateway/broker.Dockerfile", repo_root,
     ]
 
 
-def broker_run_argv(sock_dir_host: str, broker_secret: str) -> list[str]:
+def broker_run_argv(sock_dir_host: str, broker_secret: str,
+                    container: str, image: str) -> list[str]:
     return [
-        "docker", "run", "-d", "--pull", "never", "--name", BROKER_CONTAINER,
+        "docker", "run", "-d", "--pull", "never", "--name", container,
         "--restart", "unless-stopped",
         "-v", "/var/run/docker.sock:/var/run/docker.sock",
         "-v", f"{sock_dir_host}:{BROKER_SOCK_DIR_CONTAINER}",
         "-e", f"CREW_BROKER_SECRET={broker_secret}",
-        BROKER_IMAGE,
+        image,
     ]
 
 
 def router_run_argv(root_abs: str, router_port: int, gateway_secret: str,
-                    broker_sock_dir_host: str, broker_secret: str) -> list[str]:
+                    broker_sock_dir_host: str, broker_secret: str,
+                    container: str, image: str) -> list[str]:
     root_abs = str(root_abs)
     return [
-        "docker", "run", "-d", "--pull", "never", "--name", ROUTER_CONTAINER,
+        "docker", "run", "-d", "--pull", "never", "--name", container,
         "--network", "host", "--restart", "unless-stopped",
         "-v", f"{root_abs}/instances:/crew/instances:ro",
         "-v", f"{broker_sock_dir_host}:{BROKER_SOCK_DIR_CONTAINER}",
@@ -86,7 +105,7 @@ def router_run_argv(root_abs: str, router_port: int, gateway_secret: str,
         "-e", f"CREW_BROKER_SECRET={broker_secret}",
         "-e", f"CREW_BROKER_SOCK={BROKER_SOCK}",
         "-e", "CREW_ROOT=/crew",
-        ROUTER_IMAGE,
+        image,
     ]
 
 
@@ -97,6 +116,7 @@ def _repo_root() -> str:
 
 def gateway_up(root: Path) -> dict:
     cfg = load_shared_oauth(root)
+    dep = load_deployment(root)
     check_tailscale_up(run_capture=_run_capture)
     emails = discovery.union_emails(root)
     if not emails:
@@ -106,6 +126,19 @@ def gateway_up(root: Path) -> dict:
             "for at least one instance first.")
     host = tailnet_dns_name(run_capture=_run_capture)
     redirect = f"https://{host}/oauth2/callback"
+
+    for c in (dep.router_container(), dep.auth_container(), dep.broker_container()):
+        if _container_exists(c):
+            raise ExposeError(
+                f"project '{dep.project}' gateway is already up — "
+                f"`crew gateway down` first")
+    for port in (dep.router_port, dep.auth_port):
+        if not _port_free(port):
+            raise ExposeError(f"port {port} is already in use")
+    if _https_port_served(dep.https_port):
+        raise ExposeError(
+            f"tailnet HTTPS port {dep.https_port} is already served — "
+            f"pick another CREW_GATEWAY_HTTPS_PORT or stop the other gateway")
 
     gdir = paths.gateway_dir(root)
     gdir.mkdir(parents=True, exist_ok=True)
@@ -122,7 +155,7 @@ def gateway_up(root: Path) -> dict:
     broker_dir.chmod(0o711)   # non-root broker/router uids traverse to the socket
     env_file = gdir / "oauth2.env"
     env_file.write_text(render_gateway_oauth2_env(
-        cfg, GATEWAY_AUTH_PORT, ROUTER_PORT, redirect, gateway_secret))
+        cfg, dep.auth_port, dep.router_port, redirect, gateway_secret))
     env_file.chmod(0o600)
 
     # SECURITY NOTE: the router listens on TCP 127.0.0.1:ROUTER_PORT and trusts
@@ -134,37 +167,37 @@ def gateway_up(root: Path) -> dict:
     # oauth2-proxy v7.6.0 cannot proxy WebSockets over a unix socket
     # ("unsupported protocol scheme unix" -> 502), which breaks chat/events.
     try:
-        _run(router_build_argv(_repo_root()))
-        _run(broker_build_argv(_repo_root()))
-        _run_quiet(["docker", "rm", "-f", BROKER_CONTAINER])
-        _run(broker_run_argv(str(broker_dir.resolve()), broker_secret))
-        _run_quiet(["docker", "rm", "-f", ROUTER_CONTAINER])
-        _run(router_run_argv(str(root.resolve()), ROUTER_PORT, gateway_secret,
-                             str(broker_dir.resolve()), broker_secret))
-        _run_quiet(["docker", "rm", "-f", GATEWAY_AUTH_CONTAINER])
+        _run(router_build_argv(_repo_root(), dep.router_image()))
+        _run(broker_build_argv(_repo_root(), dep.broker_image()))
+        _run(broker_run_argv(str(broker_dir.resolve()), broker_secret,
+                             dep.broker_container(), dep.broker_image()))
+        _run(router_run_argv(str(root.resolve()), dep.router_port, gateway_secret,
+                             str(broker_dir.resolve()), broker_secret,
+                             dep.router_container(), dep.router_image()))
         _run([
-            "docker", "run", "-d", "--name", GATEWAY_AUTH_CONTAINER,
+            "docker", "run", "-d", "--name", dep.auth_container(),
             "--network", "host", "--restart", "unless-stopped",
             "--env-file", str(env_file.resolve()),
             "-v", f"{emails_file.resolve()}:/etc/oauth2-proxy/emails.txt:ro",
             OAUTH2_IMAGE,
         ])
-        _run(serve_argv(GATEWAY_HTTPS_PORT, GATEWAY_AUTH_PORT))
+        _run(serve_argv(dep.https_port, dep.auth_port))
     except ExposeError:
-        _run_quiet(serve_off_argv(GATEWAY_HTTPS_PORT))
-        _run_quiet(["docker", "rm", "-f", GATEWAY_AUTH_CONTAINER])
-        _run_quiet(["docker", "rm", "-f", ROUTER_CONTAINER])
-        _run_quiet(["docker", "rm", "-f", BROKER_CONTAINER])
+        _run_quiet(serve_off_argv(dep.https_port))
+        _run_quiet(["docker", "rm", "-f", dep.auth_container()])
+        _run_quiet(["docker", "rm", "-f", dep.router_container()])
+        _run_quiet(["docker", "rm", "-f", dep.broker_container()])
         shutil.rmtree(gdir, ignore_errors=True)
         raise
     return {"url": f"https://{host}/", "redirect_uri": redirect}
 
 
 def gateway_down(root: Path) -> None:
-    _run_quiet(serve_off_argv(GATEWAY_HTTPS_PORT))
-    _run_quiet(["docker", "rm", "-f", GATEWAY_AUTH_CONTAINER])
-    _run_quiet(["docker", "rm", "-f", ROUTER_CONTAINER])
-    _run_quiet(["docker", "rm", "-f", BROKER_CONTAINER])
+    dep = load_deployment(root)
+    _run_quiet(serve_off_argv(dep.https_port))
+    _run_quiet(["docker", "rm", "-f", dep.auth_container()])
+    _run_quiet(["docker", "rm", "-f", dep.router_container()])
+    _run_quiet(["docker", "rm", "-f", dep.broker_container()])
     gdir = paths.gateway_dir(root)
     if gdir.exists():
         shutil.rmtree(gdir, ignore_errors=True)
@@ -181,11 +214,13 @@ def gateway_reload(root: Path) -> None:
     """Re-derive the SSO allowlist from current instance whitelists. Use after
     hand-editing CREW_ALLOWED_EMAILS so oauth2-proxy picks up added/removed
     accounts (it watches emails.txt)."""
-    if not gateway_running():
+    dep = load_deployment(root)
+    if not gateway_running(dep):
         raise ExposeError("gateway is not running — `crew gateway up` first.")
     regenerate_union_emails(root)
 
 
-def gateway_running(run_capture=_run_capture) -> bool:
-    out = run_capture(["docker", "ps", "-q", "-f", f"name=^{ROUTER_CONTAINER}$"])
+def gateway_running(dep, run_capture=_run_capture) -> bool:
+    out = run_capture(
+        ["docker", "ps", "-q", "-f", f"name=^{dep.router_container()}$"])
     return bool(out.strip())

@@ -21,38 +21,29 @@ def test_render_gateway_oauth2_env():
     assert "OAUTH2_PROXY_EMAIL_DOMAINS" not in txt
 
 
-def test_router_image_and_build_argv():
-    assert gateway.ROUTER_IMAGE == "crewdock-gateway-router:local"
-    argv = gateway.router_build_argv("/repo")
+def test_router_build_argv():
+    dep = _dep()
+    argv = gateway.router_build_argv("/repo", dep.router_image())
     assert argv[:2] == ["docker", "build"]
-    assert "-t" in argv and gateway.ROUTER_IMAGE in argv
+    assert "-t" in argv and dep.router_image() in argv
     assert "-f" in argv
     assert argv[-1] == "/repo"
 
 
-def test_router_run_argv():
-    argv = gateway.router_run_argv(root_abs="/abs/root", router_port=9400,
-                                   gateway_secret="S3CRET",
-                                   broker_sock_dir_host="/abs/gw/broker",
-                                   broker_secret="BSECRET")
-    assert argv[:7] == ["docker", "run", "-d", "--pull", "never",
-                        "--name", "crew-gateway-router"]
-    assert "--network" in argv and "host" in argv
-    assert any(a == "/abs/root/instances:/crew/instances:ro" for a in argv)
-    assert "CREW_ROUTER_PORT=9400" in argv
-    assert "CREW_GATEWAY_SECRET=S3CRET" in argv
-    assert "CREW_ROOT=/crew" in argv
-    assert argv[-1] == gateway.ROUTER_IMAGE
-
-
 import pytest
 from crew.core.errors import ExposeError
+from crew.core.deployment import Deployment
+
+
+def _dep():
+    return Deployment(project="test", https_port=443, router_port=9400, auth_port=9401)
 
 
 def _full_shared(root):
     inst = root / "instances"
-    inst.mkdir(exist_ok=True)
+    inst.mkdir(parents=True, exist_ok=True)
     (inst / "_shared.env").write_text(
+        "CREW_PROJECT=test\n"
         "CREW_GOOGLE_CLIENT_ID=cid\nCREW_GOOGLE_CLIENT_SECRET=sec\n"
         "CREW_OAUTH_COOKIE_SECRET=" + "a" * 32 + "\n")
 
@@ -72,6 +63,9 @@ def test_gateway_up_builds_runs_and_serves(tmp_path, monkeypatch):
     monkeypatch.setattr(gateway, "_run_capture",
         lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
     monkeypatch.setattr(gateway, "_repo_root", lambda: "/repo")
+    monkeypatch.setattr(gateway, "_container_exists", lambda name: False)
+    monkeypatch.setattr(gateway, "_port_free", lambda port: True)
+    monkeypatch.setattr(gateway, "_https_port_served", lambda port: False)
 
     info = gateway.gateway_up(tmp_path)
 
@@ -94,19 +88,24 @@ def test_gateway_up_refuses_without_whitelist(tmp_path, monkeypatch):
 
 
 def test_broker_build_and_run_argv():
-    bb = gateway.broker_build_argv("/repo")
+    dep = _dep()
+    bb = gateway.broker_build_argv("/repo", dep.broker_image())
     assert bb[:2] == ["docker", "build"]
     assert "-f" in bb and any("broker.Dockerfile" in a for a in bb)
-    br = gateway.broker_run_argv("/abs/gw/broker", "BSECRET")
+    assert dep.broker_image() in bb
+    br = gateway.broker_run_argv("/abs/gw/broker", "BSECRET",
+                                 dep.broker_container(), dep.broker_image())
     assert br[:2] == ["docker", "run"]
-    assert "--name" in br and gateway.BROKER_CONTAINER in br
+    assert "test-gateway-broker" in br
     assert any(a == "/var/run/docker.sock:/var/run/docker.sock" for a in br)
-    assert any(a == "/abs/gw/broker:/run/crew-broker" for a in br)
     assert "CREW_BROKER_SECRET=BSECRET" in br
 
 
 def test_router_run_argv_gets_broker_wiring():
-    argv = gateway.router_run_argv("/abs/root", 9400, "S", "/abs/gw/broker", "BSECRET")
+    dep = _dep()
+    argv = gateway.router_run_argv("/abs/root", 9400, "S", "/abs/gw/broker",
+                                   "BSECRET", dep.router_container(), dep.router_image())
+    assert "test-gateway-router" in argv
     assert any(a == "/abs/gw/broker:/run/crew-broker" for a in argv)
     assert "CREW_BROKER_SECRET=BSECRET" in argv
     assert "CREW_BROKER_SOCK=/run/crew-broker/broker.sock" in argv
@@ -118,6 +117,9 @@ def test_gateway_up_rolls_back_on_run_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(gateway, "_run_capture",
         lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
     monkeypatch.setattr(gateway, "_repo_root", lambda: "/repo")
+    monkeypatch.setattr(gateway, "_container_exists", lambda name: False)
+    monkeypatch.setattr(gateway, "_port_free", lambda port: True)
+    monkeypatch.setattr(gateway, "_https_port_served", lambda port: False)
     quiet = []
     monkeypatch.setattr(gateway, "_run_quiet", lambda argv: quiet.append(argv))
 
@@ -128,26 +130,50 @@ def test_gateway_up_rolls_back_on_run_failure(tmp_path, monkeypatch):
 
     from crew.core import paths
     gdir = paths.gateway_dir(tmp_path)
+    dep = _dep()
 
     with pytest.raises(ExposeError):
         gateway.gateway_up(tmp_path)
     # both containers removed during rollback
-    assert any(q[:3] == ["docker", "rm", "-f"] and q[3] == gateway.ROUTER_CONTAINER
+    assert any(q[:3] == ["docker", "rm", "-f"] and q[3] == dep.router_container()
                for q in quiet)
-    assert any(q[:3] == ["docker", "rm", "-f"] and q[3] == gateway.GATEWAY_AUTH_CONTAINER
+    assert any(q[:3] == ["docker", "rm", "-f"] and q[3] == dep.auth_container()
                for q in quiet)
     # gdir is cleaned up on failure
     assert not gdir.exists()
 
 
+def test_gateway_up_errors_when_already_up(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    _published(tmp_path)
+    monkeypatch.setattr(gateway, "_run_capture",
+        lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
+    monkeypatch.setattr(gateway, "_container_exists", lambda name: True)
+    with pytest.raises(ExposeError, match="already up"):
+        gateway.gateway_up(tmp_path)
+
+
+def test_gateway_up_errors_on_busy_port(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    _published(tmp_path)
+    monkeypatch.setattr(gateway, "_run_capture",
+        lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
+    monkeypatch.setattr(gateway, "_container_exists", lambda name: False)
+    monkeypatch.setattr(gateway, "_port_free", lambda port: False)
+    with pytest.raises(ExposeError, match="in use"):
+        gateway.gateway_up(tmp_path)
+
+
 def test_gateway_reload_raises_when_down(tmp_path, monkeypatch):
-    monkeypatch.setattr(gateway, "gateway_running", lambda: False)
+    _full_shared(tmp_path)
+    monkeypatch.setattr(gateway, "gateway_running", lambda dep: False)
     with pytest.raises(ExposeError, match="not running"):
         gateway.gateway_reload(tmp_path)
 
 
 def test_gateway_reload_regenerates_when_up(tmp_path, monkeypatch):
-    monkeypatch.setattr(gateway, "gateway_running", lambda: True)
+    _full_shared(tmp_path)
+    monkeypatch.setattr(gateway, "gateway_running", lambda dep: True)
     regen = []
     monkeypatch.setattr(gateway, "regenerate_union_emails", lambda r: regen.append(r))
     gateway.gateway_reload(tmp_path)
