@@ -37,6 +37,7 @@ cd ~/my-crew
 uv sync
 
 # 2) 이 배포 초기화 (프로젝트 이름 지정, 1회). CREW_ROOT 불필요 — 현재 폴더가 루트
+#    출력에 고유 id가 표시됩니다 (예: my-crew-fox42) — 컨테이너는 `my-crew-fox42-...`
 uv run crew init my-crew
 
 # 3) 격리된 인스턴스 생성 (기본 타입: hermes). 포트는 자동 배정됩니다.
@@ -52,7 +53,8 @@ uv run crew shell alice
 
 이제 표시된 루프백 URL을 이 컴퓨터에서 열면 비서의 대시보드가 뜹니다.
 
-- 인스턴스·시크릿 등 런타임 데이터는 이 폴더의 **gitignore된 하위**(`instances/`, `_shared.env` 등)에 쌓입니다. 코드 업데이트(`git pull`)는 데이터를 건드리지 않아 안전합니다. (단 `git clean -dfx` 는 gitignore된 데이터까지 지우니 피하세요.)
+- 모든 런타임 상태(인스턴스·시크릿·게이트웨이 등)는 이 폴더의 **gitignore된 `data/` 한곳**(`data/_shared.env`, `data/instances/<name>/`, `data/credentials/`, `data/layers/`, `data/_gateway/`)에 쌓입니다. 추적되는 코드·설정(`crew/`, `agents/`, `seed/`, `_shared.env.example`)은 최상위에 그대로 남습니다. 코드 업데이트(`git pull`)는 데이터를 건드리지 않아 안전합니다. (단 `git clean -dfx` 는 gitignore된 데이터까지 지우니 피하세요.)
+- **백업·이전 = `data/` 폴더 하나만 복사**하면 됩니다.
 - 둘째 인스턴스는 다음 빈 포트를 자동으로 받습니다(겹치지 않음).
 - **둘째 배포**가 필요하면 다른 폴더에 또 clone하고 다른 프로젝트 이름으로 `crew init <other> --https-port 8443` — 네임스페이스로 한 머신에서 공존합니다.
 
@@ -62,7 +64,7 @@ uv run crew shell alice
 
 - **인스턴스(instance)** — 비서 한 "명". 격리된 Docker 컨테이너 1개 + 전용 `data/` 폴더. 기억·세션·키·신원이 모두 분리됩니다.
 
-- **배포(deployment)** — 배포 디렉터리 하나가 한 배포입니다(`crew` 는 현재 폴더에서 위로 올라가며 `instances/_shared.env` 가 있는 가장 가까운 폴더를 배포 루트로 잡습니다 — 환경변수 불필요). `crew init` 이 프로젝트 이름(`CREW_PROJECT`)과 게이트웨이 포트를 정하고, 모든 Docker 객체는 `<project>-...` 로 prefix됩니다(`my-crew-alice`, `my-crew-gateway-router` …). 덕분에 `prod`·`smoke` 같은 **여러 배포가 한 머신에서 동시에 공존**합니다(이름·포트가 겹치면 조용히 덮어쓰지 않고 에러로 막습니다).
+- **배포(deployment)** — 배포 디렉터리 하나가 한 배포입니다(`crew` 는 현재 폴더에서 위로 올라가며 배포 마커인 `data/_shared.env` 가 있는 가장 가까운 폴더를 배포 루트로 잡습니다 — 환경변수 불필요). 모든 런타임 상태는 그 폴더의 **gitignore된 `data/` 한곳**에 모이고(추적 코드·설정은 최상위에 남음), **백업·이전은 `data/` 폴더 하나만 복사**하면 됩니다. `crew init` 이 프로젝트 이름(`CREW_PROJECT`)과 게이트웨이 포트를 정하는데, 이때 **고유 접미사가 붙은 id**를 배정합니다(예: `crew init synt` → `synt-fox42`, init 출력에 표시). 모든 Docker 객체는 그 id로 prefix됩니다(`synt-fox42-alice`, `synt-fox42-gateway-router` …). 덕분에 **이름이 같은 두 배포가 다른 폴더에 있어도 절대 충돌하지 않고**, `prod`·`smoke` 같은 **여러 배포가 한 머신에서 동시에 공존**합니다(이름·포트가 겹치면 조용히 덮어쓰지 않고 에러로 막습니다).
 
 - **데이터 레이어(layer)** — 여러 비서가 공유할 자료(문서·가이드·브랜드 톤)를 **읽기 전용**으로 주입합니다. `layers/<이름>/` 폴더를 만들고 `crew create alice --layer knowledge` 로 마운트하면, 비서는 읽되 고칠 수 없습니다. 기본은 "아무 레이어도 안 붙음".
 
@@ -70,7 +72,7 @@ uv run crew shell alice
 
 - **모델 셋업** — LLM provider 로그인(OAuth/API)은 Crewdock이 아니라 Hermes가 담당합니다. 두 경로가 있습니다: ① 게이트웨이 대시보드의 **브라우저 내 모델 셋업 UI**, ② `crew shell <name>` 후 `hermes auth add <provider>`.
 
-- **접근 제어** — 인스턴스는 기본적으로 게이트웨이에 게시됩니다. 누가 보고 접근하느냐는 인스턴스별 `CREW_ALLOWED_EMAILS`(`instances/<name>/instance.env`)로만 결정됩니다. 비어 있으면 **아무에게도 안 보이고 접근 불가**(fail-closed)이며, 각 사용자는 자기 이메일이 든 인스턴스만 봅니다.
+- **접근 제어** — 인스턴스는 기본적으로 게이트웨이에 게시됩니다. 누가 보고 접근하느냐는 인스턴스별 `CREW_ALLOWED_EMAILS`(`data/instances/<name>/instance.env`)로만 결정됩니다. 비어 있으면 **아무에게도 안 보이고 접근 불가**(fail-closed)이며, 각 사용자는 자기 이메일이 든 인스턴스만 봅니다.
 
 ## 팀에 공개하기 (게이트웨이)
 
@@ -83,7 +85,7 @@ uv run crew shell alice
 
 ```bash
 # 1) 허용할 구글 계정을 인스턴스에 설정 (팀 뷰에서 쓰임)
-#    instances/alice/instance.env:
+#    data/instances/alice/instance.env:
 #    CREW_ALLOWED_EMAILS=you@example.com,colleague@example.com
 
 # 2) 게이트웨이 시작 (최초 1회) — 팀 뷰 URL + 등록할 OAuth 리디렉트 URI 출력
