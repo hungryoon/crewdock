@@ -71,11 +71,25 @@ def test_gateway_up_invokes_core(monkeypatch, root):
     from crew.core import gateway
     monkeypatch.setattr(gateway, "gateway_up", lambda r: {
         "url": "https://h.ts.net/",
-        "redirect_uri": "https://h.ts.net/oauth2/callback"})
+        "redirect_uri": "https://h.ts.net/oauth2/callback",
+        "local_url": "http://127.0.0.1:9402/"})
     result = runner.invoke(cli.app, ["gateway", "up"])
     assert result.exit_code == 0
     assert "https://h.ts.net/" in result.stdout
     assert "oauth2/callback" in result.stdout
+    assert "127.0.0.1:9402" in result.stdout
+
+
+def test_gateway_open_invokes_browser(monkeypatch, root):
+    _patch(monkeypatch, root)
+    from crew.core import gateway
+    monkeypatch.setattr(gateway, "local_view_url", lambda r: "http://127.0.0.1:9402/")
+    opened = []
+    import webbrowser
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url))
+    result = runner.invoke(cli.app, ["gateway", "open"])
+    assert result.exit_code == 0
+    assert opened == ["http://127.0.0.1:9402/"]
 
 
 def test_gateway_down_invokes_core(monkeypatch, root):

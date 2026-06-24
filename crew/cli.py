@@ -89,7 +89,9 @@ def gateway_up():
         info = gateway_mod.gateway_up(_root())
     except CrewError as exc:
         _fail(exc)
-    typer.echo(f"gateway up -> {info['url']}")
+    typer.echo("gateway up")
+    typer.echo(f"  team  (Google SSO)    -> {info['url']}")
+    typer.echo(f"  local (all instances) -> {info['local_url']}")
     typer.echo("  add this redirect URI to your Google OAuth client (once):")
     typer.echo(f"    {info['redirect_uri']}")
 
@@ -112,6 +114,18 @@ def gateway_reload():
     except CrewError as exc:
         _fail(exc)
     typer.echo("gateway allowlist reloaded")
+
+
+@gateway_app.command("open")
+def gateway_open():
+    """Open the gateway's local view (all instances) in your browser."""
+    try:
+        url = gateway_mod.local_view_url(_root())
+    except CrewError as exc:
+        _fail(exc)
+    import webbrowser
+    webbrowser.open(url)
+    typer.echo(f"opening {url}")
 
 
 @app.command(name="list")
