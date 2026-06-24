@@ -20,7 +20,7 @@ class Deployment:
     def broker_image(self) -> str:     return f"{self.project}-gateway-broker:local"
 
     def instance_project(self, name: str) -> str:
-        return f"{self.project}-{name}"
+        return paths.project_name(self.project, name)
 
 
 def _port(env: dict, key: str, default: int) -> int:

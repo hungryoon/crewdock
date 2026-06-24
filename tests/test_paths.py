@@ -35,7 +35,7 @@ def test_read_port_from_instance_env(root):
 
 
 def test_project_name(root):
-    assert paths.project_name("alice") == "crew-alice"
+    assert paths.project_name("crew", "alice") == "crew-alice"
 
 
 def test_list_layers(root):

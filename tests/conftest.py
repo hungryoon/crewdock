@@ -5,8 +5,9 @@ import pytest
 
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
-    """A temp project root with an empty instances/ dir."""
+    """A temp project root, initialized as deployment 'test'."""
     (tmp_path / "instances").mkdir()
+    (tmp_path / "instances" / "_shared.env").write_text("CREW_PROJECT=test\n")
     return tmp_path
 
 

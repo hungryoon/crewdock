@@ -29,8 +29,8 @@ def instance_dir(root: Path, name: str) -> Path:
     return instances_dir(root) / name
 
 
-def project_name(name: str) -> str:
-    return f"crew-{name}"
+def project_name(project: str, name: str) -> str:
+    return f"{project}-{name}"
 
 
 def shared_env_path(root: Path) -> Path:

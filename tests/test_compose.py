@@ -43,12 +43,12 @@ env:
 
 def test_render_produces_valid_compose_with_interpolated_secrets(manifest_file):
     m = load_manifest(manifest_file)
-    text = render_compose(m, name="alice", port=9123)
+    text = render_compose(m, name="alice", port=9123, project="test")
     doc = yaml.safe_load(text)
 
     svc = doc["services"]["agent"]
     assert svc["image"] == "nousresearch/hermes-agent:latest"
-    assert svc["container_name"] == "crew-alice"
+    assert svc["container_name"] == "test-alice"
     assert svc["restart"] == "unless-stopped"
     assert svc["volumes"] == ["./data:/opt/data"]
     # host port is interpolated, NOT baked
@@ -63,7 +63,7 @@ def test_render_produces_valid_compose_with_interpolated_secrets(manifest_file):
 
 def test_render_has_no_literal_secret_values(manifest_file):
     m = load_manifest(manifest_file)
-    text = render_compose(m, name="alice", port=9123)
+    text = render_compose(m, name="alice", port=9123, project="test")
     # the only port literal is the container port (9119); host port stays a var
     assert "9123" not in text
 
@@ -71,7 +71,7 @@ def test_render_has_no_literal_secret_values(manifest_file):
 def test_render_mounts_selected_layers_read_only(manifest_file):
     m = load_manifest(manifest_file)
     text = render_compose(m, name="alice", port=9123,
-                          layers=["knowledge", "brand-voice"])
+                          layers=["knowledge", "brand-voice"], project="test")
     doc = yaml.safe_load(text)
     vols = doc["services"]["agent"]["volumes"]
     assert "./data:/opt/data" in vols
@@ -81,13 +81,14 @@ def test_render_mounts_selected_layers_read_only(manifest_file):
 
 def test_render_no_layers_mounts_only_data(manifest_file):
     m = load_manifest(manifest_file)
-    doc = yaml.safe_load(render_compose(m, name="bob", port=9124))
+    doc = yaml.safe_load(render_compose(m, name="bob", port=9124, project="test"))
     assert doc["services"]["agent"]["volumes"] == ["./data:/opt/data"]
 
 
 def test_render_bridge_mode_no_network_mode_line(manifest_file):
     # default bridge manifest must not emit a network_mode key
-    text = render_compose(load_manifest(manifest_file), name="alice", port=9123)
+    text = render_compose(load_manifest(manifest_file), name="alice", port=9123,
+                          project="test")
     doc = yaml.safe_load(text)
     assert "network_mode" not in doc["services"]["agent"]
     assert doc["services"]["agent"]["ports"] == ["127.0.0.1:${CREW_PORT}:9119"]
@@ -96,7 +97,8 @@ def test_render_bridge_mode_no_network_mode_line(manifest_file):
 def test_render_bridge_mode_port_env_uses_container_port(tmp_path):
     path = tmp_path / "bridge.yaml"
     path.write_text(PORT_ENV_BRIDGE_MANIFEST)
-    text = render_compose(load_manifest(path), name="alice", port=9123)
+    text = render_compose(load_manifest(path), name="alice", port=9123,
+                          project="test")
     doc = yaml.safe_load(text)
     svc = doc["services"]["agent"]
     assert svc["ports"] == ["127.0.0.1:${CREW_PORT}:9119"]
@@ -108,7 +110,7 @@ def test_render_host_mode(tmp_path):
     path = tmp_path / "host.yaml"
     path.write_text(HOST_MODE_MANIFEST)
     text = render_compose(load_manifest(path), name="alice", port=9123,
-                          layers=["knowledge"])
+                          layers=["knowledge"], project="test")
     doc = yaml.safe_load(text)
     svc = doc["services"]["agent"]
     # host networking declared
@@ -127,7 +129,7 @@ def test_render_host_mode(tmp_path):
 
 def test_render_compose_includes_credential_keys_as_passthrough(manifest_file):
     m = load_manifest(manifest_file)
-    out = render_compose(m, "alice", 9120,
+    out = render_compose(m, "alice", 9120, project="test",
                          credential_keys=["ANTHROPIC_API_KEY", "OPENAI_API_KEY"])
     assert "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" in out
     assert "OPENAI_API_KEY=${OPENAI_API_KEY:-}" in out
@@ -137,7 +139,7 @@ def test_render_compose_credential_keys_dedupe_against_passthrough(manifest_file
     m = load_manifest(manifest_file)
     # a key already in manifest.passthrough_env must not be rendered twice
     dup = m.passthrough_env[0]
-    out = render_compose(m, "alice", 9120, credential_keys=[dup])
+    out = render_compose(m, "alice", 9120, credential_keys=[dup], project="test")
     assert out.count(f"{dup}=${{{dup}:-}}") == 1
 
 
@@ -149,7 +151,7 @@ def test_render_compose_uses_image_override():
     d = pathlib.Path(tempfile.mkdtemp()) / "hermes.yaml"
     d.write_text(SAMPLE_MANIFEST)
     manifest = load_manifest(d)
-    out = render_compose(manifest, "alice", 9120,
+    out = render_compose(manifest, "alice", 9120, project="test",
                          image="nousresearch/hermes-agent@sha256:abc")
     assert "image: nousresearch/hermes-agent@sha256:abc" in out
     assert "image: nousresearch/hermes-agent:latest" not in out
@@ -163,7 +165,7 @@ def test_render_compose_falls_back_to_manifest_image():
     d = pathlib.Path(tempfile.mkdtemp()) / "hermes.yaml"
     d.write_text(SAMPLE_MANIFEST)
     manifest = load_manifest(d)
-    out = render_compose(manifest, "alice", 9120)
+    out = render_compose(manifest, "alice", 9120, project="test")
     assert "image: nousresearch/hermes-agent:latest" in out
 
 
@@ -178,11 +180,12 @@ def _load_sample_manifest():
 
 def test_render_compose_includes_default_timezone():
     from crew.core.compose import render_compose
-    out = render_compose(_load_sample_manifest(), "alice", 9120)
+    out = render_compose(_load_sample_manifest(), "alice", 9120, project="test")
     assert "TZ=Asia/Seoul" in out
 
 
 def test_render_compose_timezone_override():
     from crew.core.compose import render_compose
-    out = render_compose(_load_sample_manifest(), "alice", 9120, timezone="UTC")
+    out = render_compose(_load_sample_manifest(), "alice", 9120, timezone="UTC",
+                         project="test")
     assert "TZ=UTC" in out

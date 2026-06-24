@@ -18,6 +18,7 @@ def render_compose(
     credential_keys: list[str] | None = None,
     image: str | None = None,
     timezone: str | None = None,
+    project: str = "crew",
 ) -> str:
     """Render docker-compose.yml text. `port` is recorded by the caller into
     instance.env as CREW_PORT; the compose file references it via ${CREW_PORT}.
@@ -42,7 +43,7 @@ def render_compose(
     return template.render(
         image=image or manifest.image,
         timezone=timezone or DEFAULT_TIMEZONE,
-        container_name=project_name(name),
+        container_name=project_name(project, name),
         data_mount=manifest.data_mount,
         layers_mount=manifest.layers_mount or "/opt/shared",
         layers=layers or [],

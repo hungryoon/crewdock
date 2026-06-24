@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .compose import render_compose
+from .deployment import load_deployment
 from .docker import run_compose, compose_argv
 from .errors import (
     CrewError,
@@ -108,6 +109,7 @@ def create(root: Path, name: str, type: str, creds: dict,
     tz = tz or DEFAULT_TIMEZONE
     paths.validate_name(name)
     validate_timezone(tz)
+    dep = load_deployment(root)
     inst_dir = paths.instance_dir(root, name)
     manifest = load_manifest(_manifest_path(root, type))
     _validate_layers(root, layers)
@@ -130,7 +132,7 @@ def create(root: Path, name: str, type: str, creds: dict,
             paths.compose_path(root, name).write_text(
                 render_compose(manifest, name, port, layers=layers,
                                credential_keys=cred_keys, image=manifest.image,
-                               timezone=tz)
+                               timezone=tz, project=dep.project)
             )
             paths.write_meta(root, name, {
                 "type": type, "port": port, "image": manifest.image,
@@ -139,7 +141,7 @@ def create(root: Path, name: str, type: str, creds: dict,
                 "created_at": _stamp(),
             })
             run_compose(
-                paths.project_name(name),
+                dep.instance_project(name),
                 paths.compose_path(root, name),
                 _env_files(root, name),
                 ["up", "-d"],
@@ -166,8 +168,9 @@ def _require_exists(root: Path, name: str) -> None:
 
 def remove(root: Path, name: str, purge: bool = False) -> None:
     _require_exists(root, name)
+    dep = load_deployment(root)
     run_compose(
-        paths.project_name(name),
+        dep.instance_project(name),
         paths.compose_path(root, name),
         _env_files(root, name),
         ["down"],
@@ -225,11 +228,11 @@ def _purge_dir(path: Path) -> None:
         )
 
 
-def _compose_state(root: Path, name: str) -> str:
+def _compose_state(root: Path, name: str, project: str) -> str:
     """Runtime state from `docker compose ps`. running | stopped | absent."""
     try:
         result = run_compose(
-            paths.project_name(name),
+            f"{project}-{name}",
             paths.compose_path(root, name),
             _env_files(root, name),
             ["ps", "--status", "running", "-q"],
@@ -242,6 +245,7 @@ def _compose_state(root: Path, name: str) -> str:
 
 def status(root: Path, name: str) -> Instance:
     _require_exists(root, name)
+    dep = load_deployment(root)
     meta = paths.read_meta(root, name)
     port = paths.read_port(root, name) or 0
     return Instance(
@@ -251,7 +255,7 @@ def status(root: Path, name: str) -> Instance:
         image=meta.get("image", "unknown"),
         previous_image=meta.get("previous_image", ""),
         timezone=meta.get("timezone", DEFAULT_TIMEZONE),
-        state=_compose_state(root, name),
+        state=_compose_state(root, name, dep.project),
         created_at=meta.get("created_at", ""),
     )
 
@@ -265,10 +269,11 @@ _LIFECYCLE = {"start", "stop", "restart"}
 
 def lifecycle(root: Path, name: str, action: str) -> None:
     _require_exists(root, name)
+    dep = load_deployment(root)
     if action not in _LIFECYCLE:
         raise ValueError(f"unknown lifecycle action: {action}")
     run_compose(
-        paths.project_name(name),
+        dep.instance_project(name),
         paths.compose_path(root, name),
         _env_files(root, name),
         [action],
@@ -278,9 +283,10 @@ def lifecycle(root: Path, name: str, action: str) -> None:
 def logs(root: Path, name: str, follow: bool = False) -> None:
     """Stream logs by exec-ing docker compose directly (inherits stdio)."""
     _require_exists(root, name)
+    dep = load_deployment(root)
     args = ["logs"] + (["-f"] if follow else [])
     subprocess.run(
-        compose_argv(paths.project_name(name), paths.compose_path(root, name),
+        compose_argv(dep.instance_project(name), paths.compose_path(root, name),
                      _env_files(root, name), args),
         check=False,
     )
@@ -288,8 +294,9 @@ def logs(root: Path, name: str, follow: bool = False) -> None:
 
 def shell_argv(root: Path, name: str) -> list[str]:
     _require_exists(root, name)
+    dep = load_deployment(root)
     return compose_argv(
-        paths.project_name(name),
+        dep.instance_project(name),
         paths.compose_path(root, name),
         _env_files(root, name),
         ["exec", "agent", "sh"],
@@ -300,14 +307,16 @@ def _stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def _render_instance(root: Path, name: str, meta: dict, manifest, image: str) -> None:
+def _render_instance(root: Path, name: str, meta: dict, manifest, image: str,
+                     project: str) -> None:
     """Re-render an instance's compose file using a specific image."""
     port = paths.read_port(root, name) or 0
     cred_keys = _credentials.credential_keys(root, meta.get("credentials", []))
     paths.compose_path(root, name).write_text(
         render_compose(manifest, name, port, layers=meta.get("layers", []),
                        credential_keys=cred_keys, image=image,
-                       timezone=meta.get("timezone", DEFAULT_TIMEZONE))
+                       timezone=meta.get("timezone", DEFAULT_TIMEZONE),
+                       project=project)
     )
 
 
@@ -320,6 +329,7 @@ def update(root: Path, name: str, backup: bool = False,
     current/previous. to_default=True repins to the manifest image.
     With backup=True, snapshot data/ first."""
     _require_exists(root, name)
+    dep = load_deployment(root)
     _exclusive = [f for f, v in (("--image", image is not None),
                                  ("--rollback", rollback),
                                  ("--to-default", to_default)) if v]
@@ -338,7 +348,7 @@ def update(root: Path, name: str, backup: bool = False,
         validate_timezone(tz)
         meta["timezone"] = tz
         paths.write_meta(root, name, meta)
-    project = paths.project_name(name)
+    project = dep.instance_project(name)
     compose_file = paths.compose_path(root, name)
     env_files = _env_files(root, name)
 
@@ -346,25 +356,27 @@ def update(root: Path, name: str, backup: bool = False,
         prev = meta.get("previous_image")
         if not prev:
             raise CrewError("no previous image to roll back to")
-        _repin(root, name, meta, manifest, target=prev, new_previous=current)
+        _repin(root, name, meta, manifest, target=prev, new_previous=current,
+               project=dep.project)
         return
 
     if to_default:
         _repin(root, name, meta, manifest,
-               target=manifest.image, new_previous=current)
+               target=manifest.image, new_previous=current, project=dep.project)
         return
 
     if image is None:
-        _render_instance(root, name, meta, manifest, current)
+        _render_instance(root, name, meta, manifest, current, dep.project)
         run_compose(project, compose_file, env_files, ["pull"])
         run_compose(project, compose_file, env_files, ["up", "-d"])
         return
 
-    _repin(root, name, meta, manifest, target=image, new_previous=current)
+    _repin(root, name, meta, manifest, target=image, new_previous=current,
+           project=dep.project)
 
 
 def _repin(root: Path, name: str, meta: dict, manifest, target: str,
-           new_previous: str) -> None:
+           new_previous: str, project: str) -> None:
     """Atomically switch an instance to `target` image. Records
     previous_image=new_previous. Restores meta+compose if pull/up fails."""
     old_meta = dict(meta)
@@ -373,8 +385,8 @@ def _repin(root: Path, name: str, meta: dict, manifest, target: str,
     new_meta["image"] = target
     new_meta["previous_image"] = new_previous
     paths.write_meta(root, name, new_meta)
-    _render_instance(root, name, new_meta, manifest, target)
-    project = paths.project_name(name)
+    _render_instance(root, name, new_meta, manifest, target, project)
+    project = paths.project_name(project, name)
     compose_file = paths.compose_path(root, name)
     env_files = _env_files(root, name)
     try:

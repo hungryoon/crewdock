@@ -53,7 +53,7 @@ def test_create_builds_instance_and_runs_up(root, calls):
     assert "CREW_PORT=9120" in env
     assert "TELEGRAM_BOT_TOKEN=tok" in env
     # docker up -d was invoked for this project
-    assert ("crew-alice", ["up", "-d"]) in calls
+    assert ("test-alice", ["up", "-d"]) in calls
 
 
 def test_create_seeds_commented_allowed_emails_hint(root, calls):
@@ -119,7 +119,7 @@ def test_remove_keeps_data_by_default(root, calls):
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     manager.remove(root, "alice")
     # container down was called
-    assert ("crew-alice", ["down"]) in calls
+    assert ("test-alice", ["down"]) in calls
     # data preserved
     assert (paths.instance_dir(root, "alice") / "data").exists()
 
@@ -217,7 +217,7 @@ def test_status_reads_state_from_docker(root, monkeypatch):
 
     # ps reports a running container
     monkeypatch.setattr(manager, "_compose_state",
-                        lambda root, name: "running")
+                        lambda root, name, project: "running")
     inst = manager.status(root, "alice")
     assert inst.name == "alice"
     assert inst.port == 9120
@@ -234,7 +234,7 @@ def test_list_returns_all_instances(root, monkeypatch):
         return R()
 
     monkeypatch.setattr(manager, "run_compose", fake_run)
-    monkeypatch.setattr(manager, "_compose_state", lambda root, name: "running")
+    monkeypatch.setattr(manager, "_compose_state", lambda root, name, project: "running")
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     manager.create(root, "bob", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     names = sorted(i.name for i in manager.list(root))
@@ -247,17 +247,17 @@ def test_lifecycle_start_stop_restart(root, calls):
     manager.lifecycle(root, "alice", "start")
     manager.lifecycle(root, "alice", "stop")
     manager.lifecycle(root, "alice", "restart")
-    assert ("crew-alice", ["start"]) in calls
-    assert ("crew-alice", ["stop"]) in calls
-    assert ("crew-alice", ["restart"]) in calls
+    assert ("test-alice", ["start"]) in calls
+    assert ("test-alice", ["stop"]) in calls
+    assert ("test-alice", ["restart"]) in calls
 
 
 def test_update_pulls_and_recreates(root, calls):
     _agents_dir(root)
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     manager.update(root, "alice")
-    assert ("crew-alice", ["pull"]) in calls
-    assert ("crew-alice", ["up", "-d"]) in calls
+    assert ("test-alice", ["pull"]) in calls
+    assert ("test-alice", ["up", "-d"]) in calls
 
 
 def test_update_backup_snapshots_data(root, calls):
@@ -284,7 +284,7 @@ def test_update_rerenders_compose_for_layer_changes(root, calls):
 
 def test_create_env_file_order_shared_then_instance(root, monkeypatch):
     _agents_dir(root)
-    (root / "instances" / "_shared.env").write_text("HERMES_UID=501\n")
+    (root / "instances" / "_shared.env").write_text("CREW_PROJECT=test\nHERMES_UID=501\n")
     recorded = {}
 
     def fake_run(project, compose_file, env_files, args, capture=False):
@@ -349,7 +349,7 @@ def test_create_unknown_credential_rejected(root, calls):
 
 def test_env_files_order_shared_then_credentials_then_instance(root, calls):
     _agents_dir(root)
-    (root / "instances" / "_shared.env").write_text("HERMES_UID=501\n")
+    (root / "instances" / "_shared.env").write_text("CREW_PROJECT=test\nHERMES_UID=501\n")
     (root / "credentials").mkdir()
     (root / "credentials" / "anthropic.env").write_text("ANTHROPIC_API_KEY=secret\n")
     manager.create(root, "alice", type="hermes",
@@ -394,8 +394,8 @@ def test_bare_update_renders_from_instance_pin(root, calls):
     meta2 = paths.read_meta(root, "alice")
     assert meta2["image"] == "nousresearch/hermes-agent@sha256:pinned"
     assert "previous_image" not in meta2
-    assert ("crew-alice", ["pull"]) in calls
-    assert ("crew-alice", ["up", "-d"]) in calls
+    assert ("test-alice", ["pull"]) in calls
+    assert ("test-alice", ["up", "-d"]) in calls
 
 
 def test_update_image_sets_pin_and_previous(root, calls):
@@ -484,7 +484,7 @@ def test_status_reports_previous_image(root, calls, monkeypatch):
     _agents_dir(root)
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     manager.update(root, "alice", image="nousresearch/hermes-agent@sha256:v2")
-    monkeypatch.setattr(manager, "_compose_state", lambda root, name: "running")
+    monkeypatch.setattr(manager, "_compose_state", lambda root, name, project: "running")
     inst = manager.status(root, "alice")
     assert inst.image == "nousresearch/hermes-agent@sha256:v2"
     assert inst.previous_image == "nousresearch/hermes-agent:latest"
@@ -571,7 +571,7 @@ def test_status_reports_timezone(root, calls, monkeypatch):
     _agents_dir(root)
     manager.create(root, "alice", type="hermes",
                    creds={"TELEGRAM_BOT_TOKEN": "t"}, tz="Europe/London")
-    monkeypatch.setattr(manager, "_compose_state", lambda root, name: "running")
+    monkeypatch.setattr(manager, "_compose_state", lambda root, name, project: "running")
     assert manager.status(root, "alice").timezone == "Europe/London"
 
 
