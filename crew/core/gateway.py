@@ -11,7 +11,7 @@ from crew.core.expose import (
     OAUTH2_IMAGE, load_shared_oauth, _run, _run_quiet, _run_capture,
     tailnet_dns_name, check_tailscale_up, serve_argv, serve_off_argv,
 )
-from crew.gateway import discovery
+from crew.gateway import discovery, signin
 
 BROKER_SOCK_DIR_CONTAINER = "/run/crew-broker"
 BROKER_SOCK = "/run/crew-broker/broker.sock"
@@ -89,6 +89,11 @@ def render_gateway_oauth2_env(cfg, authport: int, routerport: int,
         "OAUTH2_PROXY_REVERSE_PROXY=true",
         "OAUTH2_PROXY_PROXY_WEBSOCKETS=true",
         "OAUTH2_PROXY_COOKIE_SECURE=true",
+        # Sign-in/error pages themed to match the gateway dashboard (gdir/templates
+        # is bind-mounted here in gateway_up). "-" drops oauth2-proxy's default
+        # logo so only our "crew" text brand shows, matching the dashboard header.
+        "OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR=/etc/oauth2-proxy/templates",
+        "OAUTH2_PROXY_CUSTOM_SIGN_IN_LOGO=-",
     ]
     return "\n".join(lines) + "\n"
 
@@ -212,6 +217,10 @@ def gateway_up(root: Path) -> dict:
     env_file.write_text(render_gateway_oauth2_env(
         cfg, dep.auth_port, dep.router_port, redirect, gateway_secret))
     env_file.chmod(0o600)
+    # Sign-in/error pages themed to match the dashboard, bind-mounted read-only
+    # into the auth container (OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR points here).
+    templates_dir = gdir / "templates"
+    signin.write_templates(templates_dir)
 
     # SECURITY NOTE: the router listens on TCP 127.0.0.1:ROUTER_PORT and trusts
     # the X-Forwarded-Email oauth2-proxy sets. Instances run with host networking
@@ -234,6 +243,7 @@ def gateway_up(root: Path) -> dict:
             "--network", "host", "--restart", "unless-stopped",
             "--env-file", str(env_file.resolve()),
             "-v", f"{emails_file.resolve()}:/etc/oauth2-proxy/emails.txt:ro",
+            "-v", f"{templates_dir.resolve()}:/etc/oauth2-proxy/templates:ro",
             OAUTH2_IMAGE,
         ])
         _run(local_run_argv(str(root.resolve()), dep.local_port,

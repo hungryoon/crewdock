@@ -4,6 +4,7 @@ import hmac
 import html as _html
 
 from crew.gateway.discovery import Published
+from crew.gateway import theme
 
 # Hop-by-hop headers must not be forwarded by a proxy (RFC 7230 6.1).
 _HOP_BY_HOP = {
@@ -169,9 +170,7 @@ def render_index(email: str, cards: list[dict]) -> str:
 <style>
   @font-face {{ font-family: "JetBrainsMono"; font-display: swap;
     src: url("/_assets/JetBrainsMono-Regular.woff2") format("woff2"); }}
-  :root {{ color-scheme: dark light;
-    --bg:#0e1116; --panel:#161b22; --border:#2a313c; --fg:#d6dde6;
-    --muted:#7d8694; --accent:#58e6a8; --accent2:#f5e7c8; --down:#5a6573; }}
+  :root {{ {theme.ROOT_VARS} }}
   * {{ box-sizing: border-box; }}
   body {{ margin:0; min-height:100vh; display:flex; justify-content:center;
     background:var(--bg); color:var(--fg);

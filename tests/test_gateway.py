@@ -19,6 +19,10 @@ def test_render_gateway_oauth2_env():
     assert "OAUTH2_PROXY_REVERSE_PROXY=true" in txt
     assert "OAUTH2_PROXY_PROXY_WEBSOCKETS=true" in txt
     assert "OAUTH2_PROXY_EMAIL_DOMAINS" not in txt
+    # custom sign-in/error templates unified with the gateway dashboard design
+    assert "OAUTH2_PROXY_CUSTOM_TEMPLATES_DIR=/etc/oauth2-proxy/templates" in txt
+    # default oauth2-proxy logo disabled so only the "crew" text brand shows
+    assert "OAUTH2_PROXY_CUSTOM_SIGN_IN_LOGO=-" in txt
 
 
 def test_router_build_argv():
@@ -79,6 +83,13 @@ def test_gateway_up_builds_runs_and_serves(tmp_path, monkeypatch):
     assert any(c[:2] == ["tailscale", "serve"] for c in run)
     emails = (tmp_path / "data" / "_gateway" / "emails.txt").read_text()
     assert "a@x.com" in emails
+    # custom oauth2-proxy templates are generated and bind-mounted into the auth container
+    tdir = tmp_path / "data" / "_gateway" / "templates"
+    assert (tdir / "sign_in.html").exists()
+    auth_run = next(c for c in run
+                    if c[:2] == ["docker", "run"] and "test-gateway-auth" in c)
+    assert any(a == f"{tdir.resolve()}:/etc/oauth2-proxy/templates:ro"
+               for a in auth_run)
 
 
 def test_gateway_up_warns_without_whitelist(tmp_path, monkeypatch):

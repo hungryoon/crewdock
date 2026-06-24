@@ -9,3 +9,4 @@ __pycache__/
 
 # internal planning/spec docs — not part of the public repo
 docs/superpowers/
+.gstack/
