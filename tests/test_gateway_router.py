@@ -447,6 +447,14 @@ async def test_emails_post_remove(aiohttp_client, local_root):
     assert (await resp.json())["emails"] == []
 
 
+async def test_emails_post_remove_absent_is_noop(aiohttp_client, local_root):
+    client = await aiohttp_client(router.build_app())
+    resp = await client.post("/_emails", json={
+        "instance": "alice-aaaaaa", "action": "remove", "email": "nobody@x.com"})
+    assert resp.status == 200
+    assert (await resp.json())["emails"] == ["a@x.com"]   # unchanged
+
+
 async def test_emails_invalid_email_400(aiohttp_client, local_root):
     client = await aiohttp_client(router.build_app())
     resp = await client.post("/_emails", json={

@@ -61,6 +61,8 @@ def instance_emails(root: Path, instance_id: str) -> list[str]:
     return _emails(root, instance_id)
 
 
+# Read-modify-write without a lock: the local view is a single-operator loopback
+# control plane, and each file write is atomic. Acceptable for that threat model.
 def set_instance_emails(root: Path, instance_id: str,
                         emails: list[str]) -> list[str]:
     """Rewrite CREW_ALLOWED_EMAILS in the instance's instance.env, preserving
@@ -83,6 +85,7 @@ def set_instance_emails(root: Path, instance_id: str,
     if not found:
         out.append("CREW_ALLOWED_EMAILS=" + ",".join(clean))
     paths.atomic_write_text(p, "\n".join(out) + "\n")
+    p.chmod(0o600)
     return clean
 
 
