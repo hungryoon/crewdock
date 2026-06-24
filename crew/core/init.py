@@ -16,6 +16,11 @@ def init(root: Path, project: str, https_port: int = 443,
          router_port: int = 9400, auth_port: int = 9401,
          local_port: int = 9402) -> None:
     paths.validate_name(project)
+    if root.resolve() == Path(_repo_root()).resolve():
+        raise CrewError(
+            "CREW_ROOT must be a separate data directory, not the crewdock "
+            "source checkout — set CREW_ROOT (e.g. ~/synt-crewdock) and run "
+            "`crew init` there.")
     shared = paths.shared_env_path(root)
     if shared.exists() and parse_env_file(shared).get("CREW_PROJECT"):
         existing = parse_env_file(shared)["CREW_PROJECT"]

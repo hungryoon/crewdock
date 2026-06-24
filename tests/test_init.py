@@ -56,6 +56,15 @@ def test_init_refuses_when_already_initialized(tmp_path, monkeypatch):
         init_mod.init(root, project="synt2")
 
 
+def test_init_refuses_root_equal_repo(tmp_path, monkeypatch):
+    # When CREW_ROOT resolves to the source checkout itself, init must error
+    # clearly (not crash copying files onto themselves).
+    repo = _fake_repo(tmp_path)
+    monkeypatch.setattr(init_mod, "_repo_root", lambda: str(repo))
+    with pytest.raises(CrewError, match="separate"):
+        init_mod.init(repo, project="synt")
+
+
 def test_init_validates_project_name(tmp_path, monkeypatch):
     repo = _fake_repo(tmp_path)
     monkeypatch.setattr(init_mod, "_repo_root", lambda: str(repo))
