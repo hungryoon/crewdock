@@ -269,6 +269,21 @@ def test_local_run_argv():
     assert not any(a.startswith("CREW_GATEWAY_SECRET=") for a in argv)
 
 
+def test_local_run_argv_mounts_data_rw():
+    dep = _dep()
+    argv = gateway.local_run_argv("/abs/root", dep.local_port, "/abs/gw/broker",
+                                  "BSECRET", dep.local_container(), dep.router_image())
+    assert any(a == "/abs/root/data/instances:/crew/data/instances:rw" for a in argv)
+    assert any(a == "/abs/root/data/_gateway:/crew/data/_gateway:rw" for a in argv)
+
+
+def test_router_run_argv_keeps_instances_readonly():
+    dep = _dep()
+    argv = gateway.router_run_argv("/abs/root", 9400, "S", "/abs/gw/broker",
+                                   "BSECRET", dep.router_container(), dep.router_image())
+    assert any(a == "/abs/root/data/instances:/crew/data/instances:ro" for a in argv)
+
+
 def test_gateway_up_starts_local_view_and_returns_local_url(tmp_path, monkeypatch):
     _full_shared(tmp_path)
     _published(tmp_path)

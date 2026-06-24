@@ -195,7 +195,11 @@ def local_run_argv(root_abs: str, local_port: int, broker_sock_dir_host: str,
     return [
         "docker", "run", "-d", "--pull", "never", "--name", container,
         "--network", "host", "--restart", "unless-stopped",
-        "-v", f"{root_abs}/data/instances:/crew/data/instances:ro",
+        # Local view is the operator control plane: it writes instance allowlists
+        # and regenerates _gateway/emails.txt, so mount these read-write. The SSO
+        # router (router_run_argv) stays read-only.
+        "-v", f"{root_abs}/data/instances:/crew/data/instances:rw",
+        "-v", f"{root_abs}/data/_gateway:/crew/data/_gateway:rw",
         "-v", f"{broker_sock_dir_host}:{BROKER_SOCK_DIR_CONTAINER}",
         "-e", f"CREW_ROUTER_PORT={local_port}",
         "-e", "CREW_LOCAL_MODE=1",
