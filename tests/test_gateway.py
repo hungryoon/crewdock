@@ -195,3 +195,59 @@ def test_gateway_reload_regenerates_when_up(tmp_path, monkeypatch):
     monkeypatch.setattr(gateway, "regenerate_union_emails", lambda r: regen.append(r))
     gateway.gateway_reload(tmp_path)
     assert regen == [tmp_path]
+
+
+def test_local_run_argv():
+    dep = _dep()
+    argv = gateway.local_run_argv("/abs/root", dep.local_port, "/abs/gw/broker",
+                                  "BSECRET", dep.local_container(), dep.router_image())
+    assert argv[:2] == ["docker", "run"]
+    assert "test-gateway-local" in argv
+    assert "CREW_LOCAL_MODE=1" in argv
+    assert "CREW_ROUTER_PORT=9402" in argv
+    assert any(a == "/abs/gw/broker:/run/crew-broker" for a in argv)
+    assert "CREW_BROKER_SECRET=BSECRET" in argv
+    assert not any(a.startswith("CREW_GATEWAY_SECRET=") for a in argv)
+
+
+def test_gateway_up_starts_local_view_and_returns_local_url(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    _published(tmp_path)
+    cmds = []
+    monkeypatch.setattr(gateway, "_run", lambda argv: cmds.append(argv))
+    monkeypatch.setattr(gateway, "_run_quiet", lambda argv: None)
+    monkeypatch.setattr(gateway, "_run_capture",
+        lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
+    monkeypatch.setattr(gateway, "_repo_root", lambda: ".")
+    monkeypatch.setattr(gateway, "_require_build_context", lambda r: None)
+    monkeypatch.setattr(gateway, "_container_exists", lambda name: False)
+    monkeypatch.setattr(gateway, "_port_free", lambda port: True)
+    monkeypatch.setattr(gateway, "_https_port_served", lambda port: False)
+    info = gateway.gateway_up(tmp_path)
+    assert info["local_url"] == "http://127.0.0.1:9402/"
+    run = [c for c in cmds if isinstance(c, list)]
+    assert any("test-gateway-local" in c for c in run)
+
+
+def test_gateway_up_preflights_local_port(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    _published(tmp_path)
+    monkeypatch.setattr(gateway, "_run_capture",
+        lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
+    monkeypatch.setattr(gateway, "_container_exists", lambda name: False)
+    monkeypatch.setattr(gateway, "_port_free", lambda port: port != 9402)
+    with pytest.raises(ExposeError, match="9402"):
+        gateway.gateway_up(tmp_path)
+
+
+def test_local_view_url_raises_when_down(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    monkeypatch.setattr(gateway, "gateway_running", lambda dep: False)
+    with pytest.raises(ExposeError, match="not up"):
+        gateway.local_view_url(tmp_path)
+
+
+def test_local_view_url_when_up(tmp_path, monkeypatch):
+    _full_shared(tmp_path)
+    monkeypatch.setattr(gateway, "gateway_running", lambda dep: True)
+    assert gateway.local_view_url(tmp_path) == "http://127.0.0.1:9402/"
