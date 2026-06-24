@@ -239,6 +239,14 @@ def build_app() -> web.Application:
     return app
 
 
+def _require_secret_configured() -> None:
+    if not _GATEWAY_SECRET:
+        raise SystemExit(
+            "CREW_GATEWAY_SECRET is not set — refusing to start; the anti-spoof "
+            "check would be disabled. Start the gateway via `crew gateway up`.")
+
+
 def main() -> None:
+    _require_secret_configured()
     port = int(os.environ.get("CREW_ROUTER_PORT", "9400"))
     web.run_app(build_app(), host="127.0.0.1", port=port)

@@ -2,6 +2,17 @@ import pytest
 from crew.gateway import broker
 
 
+def test_require_secret_configured_raises_without_secret(monkeypatch):
+    monkeypatch.setattr(broker, "_SECRET", None)
+    with pytest.raises(SystemExit):
+        broker._require_secret_configured()
+
+
+def test_require_secret_configured_ok_with_secret(monkeypatch):
+    monkeypatch.setattr(broker, "_SECRET", "x")
+    broker._require_secret_configured()  # no raise
+
+
 def test_build_argv_default_project():
     assert broker.build_argv("alice", "add", "openai-codex") == [
         "docker", "exec", "-i", "crew-alice",

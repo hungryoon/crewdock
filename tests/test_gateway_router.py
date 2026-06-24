@@ -15,6 +15,17 @@ def published(monkeypatch):
     return pubs
 
 
+def test_require_secret_configured_raises_without_secret(monkeypatch):
+    monkeypatch.setattr(router, "_GATEWAY_SECRET", None)
+    with pytest.raises(SystemExit):
+        router._require_secret_configured()
+
+
+def test_require_secret_configured_ok_with_secret(monkeypatch):
+    monkeypatch.setattr(router, "_GATEWAY_SECRET", "x")
+    router._require_secret_configured()  # no raise
+
+
 async def test_index_lists_authorized(aiohttp_client, published):
     client = await aiohttp_client(router.build_app())
     resp = await client.get("/", headers={"X-Forwarded-Email": "a@x.com"})

@@ -28,6 +28,18 @@ def test_load_manifest_network_defaults(manifest_file):
     assert m.dashboard_port_env is None
 
 
+def test_shipped_hermes_manifest_is_bridge_isolated():
+    # The real shipped default manifest must be bridge-networked (isolated from
+    # the host router) with the dashboard bound 0.0.0.0 + insecure inside the
+    # container (safe: loopback-only host publish + per-instance bridge + gateway SSO).
+    from pathlib import Path
+    repo_root = Path(__file__).resolve().parent.parent
+    m = load_manifest(repo_root / "agents" / "hermes.yaml")
+    assert m.network_mode == "bridge"
+    assert m.static_env["HERMES_DASHBOARD_HOST"] == "0.0.0.0"
+    assert m.static_env["HERMES_DASHBOARD_INSECURE"] == "1"
+
+
 HOST_MODE_MANIFEST = """\
 type: hermes
 image: nousresearch/hermes-agent:latest

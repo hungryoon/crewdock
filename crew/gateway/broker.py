@@ -109,7 +109,14 @@ def build_app() -> web.Application:
     return app
 
 
+def _require_secret_configured() -> None:
+    if not _SECRET:
+        raise SystemExit(
+            "CREW_BROKER_SECRET is not set — refusing to start.")
+
+
 def main() -> None:
+    _require_secret_configured()
     async def _serve() -> None:
         runner = web.AppRunner(build_app())
         await runner.setup()

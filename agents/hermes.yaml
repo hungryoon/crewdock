@@ -8,15 +8,22 @@ image: nousresearch/hermes-agent:v2026.6.19@sha256:9f367c7756ef087661a361536a89f
 run_command: ["gateway", "run"]
 data_mount: /opt/data
 layers_mount: /opt/shared
-network_mode: host
 dashboard:
   container_port: 9119
   host: 127.0.0.1
   path: /
   port_env: HERMES_DASHBOARD_PORT
+# Bridge networking (default when network_mode is absent) puts each instance in
+# its own network namespace, so it cannot reach the host router at 127.0.0.1:9400
+# to spoof identity. The dashboard binds 0.0.0.0 INSIDE the container so docker's
+# port-map reaches it; Hermes' own auth gate is disabled (INSECURE=1) because the
+# host publishes ONLY on 127.0.0.1 (template: 127.0.0.1:${CREW_PORT}:9119), each
+# instance gets its own per-compose-project bridge network, and crewdock's
+# gateway SSO is the real auth in front.
 env:
   HERMES_DASHBOARD: "1"
-  HERMES_DASHBOARD_HOST: "127.0.0.1"
+  HERMES_DASHBOARD_HOST: "0.0.0.0"
+  HERMES_DASHBOARD_INSECURE: "1"
 passthrough_env:
   - HERMES_UID
   - HERMES_GID
