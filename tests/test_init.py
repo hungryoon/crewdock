@@ -56,13 +56,15 @@ def test_init_refuses_when_already_initialized(tmp_path, monkeypatch):
         init_mod.init(root, project="synt2")
 
 
-def test_init_refuses_root_equal_repo(tmp_path, monkeypatch):
-    # When CREW_ROOT resolves to the source checkout itself, init must error
-    # clearly (not crash copying files onto themselves).
+def test_init_in_place_when_root_is_repo(tmp_path, monkeypatch):
     repo = _fake_repo(tmp_path)
     monkeypatch.setattr(init_mod, "_repo_root", lambda: str(repo))
-    with pytest.raises(CrewError, match="separate"):
-        init_mod.init(repo, project="synt")
+    init_mod.init(repo, project="synt")  # root == repo; must NOT raise
+    from crew.core.creds import parse_env_file
+    env = parse_env_file(repo / "instances" / "_shared.env")
+    assert env["CREW_PROJECT"] == "synt"
+    # the in-repo manifest is untouched (not deleted/corrupted by a self-copy)
+    assert (repo / "agents" / "hermes.yaml").read_text() == "type: hermes\n"
 
 
 def test_init_validates_project_name(tmp_path, monkeypatch):
