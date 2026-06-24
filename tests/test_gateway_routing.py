@@ -240,6 +240,22 @@ def test_render_index_has_modal():
     assert "openai-codex" in html
 
 
+def test_render_index_emails_button_local_only():
+    cards = [{"name": "alice", "up": True, "instance_id": "alice-aaaaaa"}]
+    local = routing.render_index("local", cards, local=True)
+    assert 'class="emails"' in local
+    assert 'data-emails="alice-aaaaaa"' in local
+    # not present in the SSO (non-local) render
+    sso = routing.render_index("a@x.com", cards, local=False)
+    assert 'class="emails"' not in sso
+    assert "emodal" not in sso
+
+
+def test_render_index_default_is_non_local():
+    cards = [{"name": "alice", "up": True, "instance_id": "alice-aaaaaa"}]
+    assert 'class="emails"' not in routing.render_index("a@x.com", cards)
+
+
 def test_instance_model_connected(tmp_path):
     import json
     from crew.gateway import discovery

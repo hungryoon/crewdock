@@ -127,7 +127,7 @@ async def _index(request: web.Request) -> web.Response:
     _require_gateway(request)
     email = _viewer_email(request)
     cards = await _gather_cards(email)
-    return web.Response(text=routing.render_index(email, cards),
+    return web.Response(text=routing.render_index(email, cards, local=_LOCAL_MODE),
                         content_type="text/html")
 
 

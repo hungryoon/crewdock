@@ -460,6 +460,14 @@ async def test_emails_unknown_instance_404(aiohttp_client, local_root):
     assert resp.status == 404
 
 
+async def test_index_local_mode_shows_emails_button(aiohttp_client, monkeypatch, published):
+    monkeypatch.setattr(router, "_LOCAL_MODE", True)
+    client = await aiohttp_client(router.build_app())
+    resp = await client.get("/")
+    body = await resp.text()
+    assert 'class="emails"' in body
+
+
 async def test_emails_forbidden_in_sso_mode(aiohttp_client, monkeypatch, published):
     monkeypatch.setattr(router, "_LOCAL_MODE", False)
     client = await aiohttp_client(router.build_app())

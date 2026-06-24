@@ -126,7 +126,7 @@ def _detail_kvs(c: dict) -> list[str]:
     return kvs
 
 
-def render_index(email: str, cards: list[dict]) -> str:
+def render_index(email: str, cards: list[dict], local: bool = False) -> str:
     if cards:
         def row(c: dict) -> str:
             name = _html.escape(c["name"])
@@ -143,6 +143,9 @@ def render_index(email: str, cards: list[dict]) -> str:
                        f'{_html.escape(prov)} {"&#10003;" if _ok else "&#10007;"}</span>')
             else:
                 llm = '<span class="llm no">llm: not set &#10007;</span>'
+            emails_btn = (
+                f'<button class="emails" data-emails="{iid}" data-label="{name}">'
+                f'&#9993; emails</button>') if local else ''
             return (
                 f'      <div class="row" data-name="{name}">\n'
                 f'        <div class="head">'
@@ -150,6 +153,7 @@ def render_index(email: str, cards: list[dict]) -> str:
                 f'<span class="name">{name}</span>'
                 f'<span class="state">{"running" if c["up"] else "down"}</span>'
                 f'{llm}'
+                f'{emails_btn}'
                 f'<button class="setup" data-setup="{iid}" data-label="{name}">&#9881; model</button>'
                 f'<a class="go" href="/i/{name}/">dashboard</a>'
                 f'</div>\n'
@@ -160,6 +164,64 @@ def render_index(email: str, cards: list[dict]) -> str:
         body = f'<div class="list">\n{rows}\n    </div>'
     else:
         body = '<p class="empty">No instances are available for your account.</p>'
+    emails_modal = """
+<div class="modal" id="emodal" hidden>
+  <div class="dialog">
+    <h2>allowed emails &mdash; <span class="i" id="e-inst"></span></h2>
+    <div class="elist" id="e-list"></div>
+    <div class="drow">
+      <input id="e-input" type="email" placeholder="name@example.com">
+      <button id="e-add">add</button>
+      <button class="close" id="e-close">close</button>
+    </div>
+    <pre class="out" id="e-out"></pre>
+  </div>
+</div>""" if local else ""
+    emails_script = """
+  let emInstance = "";
+  const emodal = document.getElementById("emodal");
+  const eInst = document.getElementById("e-inst");
+  const eList = document.getElementById("e-list");
+  const eInput = document.getElementById("e-input");
+  const eOut = document.getElementById("e-out");
+  function emClose() { emodal.hidden = true; }
+  function emRender(emails) {
+    eList.innerHTML = "";
+    if (!emails.length) { eList.textContent = "no emails yet"; }
+    for (const em of emails) {
+      const row = document.createElement("div");
+      row.className = "erow";
+      const span = document.createElement("span");
+      span.textContent = em;
+      const del = document.createElement("button");
+      del.className = "edel"; del.textContent = "\\u00d7";
+      del.onclick = () => emMutate("remove", em);
+      row.appendChild(span); row.appendChild(del);
+      eList.appendChild(row);
+    }
+  }
+  async function emLoad() {
+    eOut.textContent = "";
+    const r = await fetch("/_emails?instance=" + encodeURIComponent(emInstance),
+      {credentials: "same-origin"});
+    if (r.ok) emRender((await r.json()).emails);
+  }
+  async function emMutate(action, email) {
+    eOut.textContent = "";
+    const r = await fetch("/_emails", {
+      method: "POST", credentials: "same-origin",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({instance: emInstance, action, email})});
+    if (r.ok) { emRender((await r.json()).emails); if (action === "add") eInput.value = ""; }
+    else { eOut.textContent = await r.text(); }
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest(".emails");
+    if (b) { emInstance = b.dataset.emails; eInst.textContent = b.dataset.label || b.dataset.emails; emodal.hidden = false; emLoad(); return; }
+    if (e.target === emodal || e.target.closest("#e-close")) { emClose(); return; }
+    if (e.target.closest("#e-add")) { const v = eInput.value.trim(); if (v) emMutate("add", v); return; }
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") emClose(); });""" if local else ""
     return f"""\
 <!doctype html>
 <html lang="en">
@@ -224,6 +286,14 @@ def render_index(email: str, cards: list[dict]) -> str:
     color:var(--muted); min-height:60px; max-height:300px; overflow:auto;
     background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px; }}
   .out a {{ color:var(--accent); }}
+  .emails {{ font:inherit; font-size:11px; cursor:pointer; color:var(--fg);
+    background:transparent; border:1px solid var(--border); border-radius:5px;
+    padding:2px 9px; }}
+  .emails:hover {{ border-color:var(--accent); }}
+  .elist {{ display:flex; flex-direction:column; gap:6px; }}
+  .erow {{ display:flex; align-items:center; gap:8px; font-size:12px; }}
+  .edel {{ margin-left:auto; font:inherit; cursor:pointer; color:#e07a8a;
+    background:transparent; border:1px solid #5a3a42; border-radius:5px; padding:0 7px; }}
 </style>
 </head>
 <body>
@@ -295,7 +365,9 @@ def render_index(email: str, cards: list[dict]) -> str:
     }}
   }});
   document.addEventListener("keydown", (e) => {{ if (e.key === "Escape") closeModal(); }});
+{emails_script}
 </script>
+{emails_modal}
 </body>
 </html>
 """
