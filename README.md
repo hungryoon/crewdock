@@ -54,6 +54,8 @@ crew shell alice
 - 모든 명령은 `crew <명령>` 또는 저장소에서 `uv run crew <명령>` 으로 실행합니다.
 - 둘째 인스턴스는 다음 빈 포트를 자동으로 받습니다(겹치지 않음).
 
+> ⚠️ Crewdock은 **소스 체크아웃에서 실행**합니다(`uv sync` 후 `uv run crew …`). `pip install` / `uv tool install` 같은 설치형은 게이트웨이가 도커 이미지를 빌드할 때 소스 트리를 못 찾아 `crew gateway up` 이 실패합니다.
+
 ## 핵심 개념
 
 - **인스턴스(instance)** — 비서 한 "명". 격리된 Docker 컨테이너 1개 + 전용 `data/` 폴더. 기억·세션·키·신원이 모두 분리됩니다.
