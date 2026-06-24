@@ -245,10 +245,12 @@ def test_render_index_emails_button_local_only():
     local = routing.render_index("local", cards, local=True)
     assert 'class="emails"' in local
     assert 'data-emails="alice-aaaaaa"' in local
+    assert ".elist" in local            # emails CSS present in the local render
     # not present in the SSO (non-local) render
     sso = routing.render_index("a@x.com", cards, local=False)
     assert 'class="emails"' not in sso
     assert "emodal" not in sso
+    assert ".elist" not in sso          # emails CSS must not leak into SSO output
 
 
 def test_render_index_default_is_non_local():

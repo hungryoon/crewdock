@@ -165,6 +165,16 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
     else:
         body = '<p class="empty">No instances are available for your account.</p>'
     emails_modal = """
+<style>
+  .emails { font:inherit; font-size:11px; cursor:pointer; color:var(--fg);
+    background:transparent; border:1px solid var(--border); border-radius:5px;
+    padding:2px 9px; }
+  .emails:hover { border-color:var(--accent); }
+  .elist { display:flex; flex-direction:column; gap:6px; }
+  .erow { display:flex; align-items:center; gap:8px; font-size:12px; }
+  .edel { margin-left:auto; font:inherit; cursor:pointer; color:#e07a8a;
+    background:transparent; border:1px solid #5a3a42; border-radius:5px; padding:0 7px; }
+</style>
 <div class="modal" id="emodal" hidden>
   <div class="dialog">
     <h2>allowed emails &mdash; <span class="i" id="e-inst"></span></h2>
@@ -286,14 +296,6 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
     color:var(--muted); min-height:60px; max-height:300px; overflow:auto;
     background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px; }}
   .out a {{ color:var(--accent); }}
-  .emails {{ font:inherit; font-size:11px; cursor:pointer; color:var(--fg);
-    background:transparent; border:1px solid var(--border); border-radius:5px;
-    padding:2px 9px; }}
-  .emails:hover {{ border-color:var(--accent); }}
-  .elist {{ display:flex; flex-direction:column; gap:6px; }}
-  .erow {{ display:flex; align-items:center; gap:8px; font-size:12px; }}
-  .edel {{ margin-left:auto; font:inherit; cursor:pointer; color:#e07a8a;
-    background:transparent; border:1px solid #5a3a42; border-radius:5px; padding:0 7px; }}
 </style>
 </head>
 <body>
