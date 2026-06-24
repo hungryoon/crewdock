@@ -28,33 +28,35 @@
 
 ## 빠른 시작 (로컬)
 
-전제조건 없이 — 게이트웨이도, Tailscale도, OAuth도 필요 없습니다. 이 컴퓨터에서 비서 하나를 바로 띄웁니다.
+전제조건 없이 — 게이트웨이도, Tailscale도, OAuth도 필요 없습니다. **클론한 폴더 안에서 그대로** 비서 하나를 바로 띄웁니다.
 
 ```bash
-# 1) 의존성 설치 (uv 사용)
+# 1) 클론 + 의존성 설치 (이 폴더가 이 배포의 홈이자 데이터 루트)
+git clone https://github.com/hungryoon/crewdock ~/my-crew
+cd ~/my-crew
 uv sync
 
-# 2) 배포 초기화 — 데이터 루트를 코드와 분리하고 프로젝트 이름을 정합니다 (1회)
-export CREW_ROOT=~/my-crew
-crew init my-crew
+# 2) 이 배포 초기화 (프로젝트 이름 지정, 1회). CREW_ROOT 불필요 — 현재 폴더가 루트
+uv run crew init my-crew
 
 # 3) 격리된 인스턴스 생성 (기본 타입: hermes). 포트는 자동 배정됩니다.
-crew create alice
+uv run crew create alice
 
 # 4) 상태 확인 — 대시보드 URL이 표시됩니다 (예: http://127.0.0.1:9120/)
-crew status alice
+uv run crew status alice
 
 # 5) 모델 연결 — 컨테이너 안에서 provider 로그인
-crew shell alice
+uv run crew shell alice
 #   (컨테이너 내부에서) hermes auth add <provider>   예: openai-codex, anthropic
 ```
 
 이제 표시된 루프백 URL을 이 컴퓨터에서 열면 비서의 대시보드가 뜹니다.
 
-- 모든 명령은 `crew <명령>` 또는 저장소에서 `uv run crew <명령>` 으로 실행합니다.
+- 인스턴스·시크릿 등 런타임 데이터는 이 폴더의 **gitignore된 하위**(`instances/`, `_shared.env` 등)에 쌓입니다. 코드 업데이트(`git pull`)는 데이터를 건드리지 않아 안전합니다. (단 `git clean -dfx` 는 gitignore된 데이터까지 지우니 피하세요.)
 - 둘째 인스턴스는 다음 빈 포트를 자동으로 받습니다(겹치지 않음).
+- **둘째 배포**가 필요하면 다른 폴더에 또 clone하고 다른 프로젝트 이름으로 `crew init <other> --https-port 8443` — 네임스페이스로 한 머신에서 공존합니다.
 
-> ⚠️ Crewdock은 **소스 체크아웃에서 실행**합니다(`uv sync` 후 `uv run crew …`). `pip install` / `uv tool install` 같은 설치형은 게이트웨이가 도커 이미지를 빌드할 때 소스 트리를 못 찾아 `crew gateway up` 이 실패합니다.
+> ⚠️ Crewdock은 **소스 클론에서 실행**합니다(`uv sync` 후 `uv run crew …`). `pip install` / `uv tool install` 같은 설치형은 게이트웨이가 도커 이미지를 빌드할 때 소스 트리를 못 찾아 `crew gateway up` 이 실패합니다. (운영 배포는 활성 개발 체크아웃이 아니라 **전용 clone**에서 돌리세요.)
 
 ## 핵심 개념
 
