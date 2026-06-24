@@ -33,16 +33,19 @@
 ```sh
 cd ~/synt-crewdock                   # 배포별 데이터 루트로 이동
 crew init synt                       # 현재 폴더를 프로젝트 이름으로 한 번만 초기화
-                                     #   → 고유 id 배정 (예: synt-fox42, init 출력에 표시)
+                                     #   → 고유 id 배정 (예: synt-3f9a2c, init 출력에 표시)
 ```
 
-- `crew init`은 라벨(`synt`)에 **고유 접미사**를 붙여 `CREW_PROJECT`를 배정한다(예: `synt-fox42`,
+- `crew init`은 라벨(`synt`)에 **16진수 6자리 접미사**를 붙여 `CREW_PROJECT`를 배정한다(예: `synt-3f9a2c`,
   init 출력에 표시). 덕분에 이름이 같은 두 배포가 다른 폴더에 있어도 절대 충돌하지 않는다.
-- `CREW_PROJECT`(여기선 `synt-fox42`)와 게이트웨이 포트(`CREW_GATEWAY_HTTPS_PORT`=443,
+- `CREW_PROJECT`(여기선 `synt-3f9a2c`)와 게이트웨이 포트(`CREW_GATEWAY_HTTPS_PORT`=443,
   `CREW_ROUTER_PORT`=9400, `CREW_AUTH_PORT`=9401)는 `data/_shared.env`에 들어가며 **`crew init`이
   한 번 써주면 끝**이다. 이후 명령들은 이 값을 읽어 동작한다.
-- 모든 Docker 객체는 그 id로 프리픽스된다: 인스턴스 컨테이너는 `<project>-<instance>`
-  (예: `synt-fox42-alice`), 게이트웨이 컨테이너는 `<project>-gateway-{router,auth,broker}`.
+- 모든 Docker 객체는 그 id로 프리픽스된다: 인스턴스 컨테이너는 `<project>-<instance>-<hex>`
+  (예: `synt-3f9a2c-ted-9b8c7d`, 디스크상 폴더는 `data/instances/ted-9b8c7d/`), 게이트웨이 컨테이너는
+  `<project>-gateway-{router,auth,broker}`. 인스턴스 해시는 내부/디스크상 용도이고, 명령에서는
+  평범한 이름으로 지칭한다(`crew status ted`, `crew logs ted`, `crew rm ted`). 지우고 다시 만들면
+  새 해시가 배정되어 잔여물과 충돌하지 않는다.
 - Docker를 건드리는 명령은 루트가 초기화돼 있지 않으면 `NotInitializedError`로 멈춘다
   (먼저 `crew init` 실행).
 
@@ -206,7 +209,10 @@ mv layers                data/layers             2>/dev/null || true
 # seed 템플릿은 git으로 seed/ 로 이동됨 — git pull 이후 자동
 ```
 
-- **`CREW_PROJECT`는 그대로 유지된다** — 고유 접미사는 **새로** `crew init`하는 배포에만 붙고,
+- **`CREW_PROJECT`는 그대로 유지된다** — 16진수 접미사는 **새로** `crew init`하는 배포에만 붙고,
   기존 배포의 `data/_shared.env`에 이미 든 `CREW_PROJECT` 값은 건드리지 않는다.
+- **이전·복원은 `data/` 폴더 전체를 통째로 옮긴다(레이어 포함)** — 레이어는 `data/layers/`에 있어
+  `data/` 백업과 함께 따라온다. 인스턴스만 옮기고 참조된 레이어를 빠뜨리면 `crew update`가
+  조용히 빈 마운트로 넘어가지 않고 **에러로 막는다**.
 - 이전 릴리즈의 컨테이너/네트워킹 변경으로 기존 컨테이너 재생성이 필요하면
   `crew rm <name> --purge` 후 다시 `crew create` 한다.

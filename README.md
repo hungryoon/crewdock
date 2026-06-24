@@ -37,7 +37,7 @@ cd ~/my-crew
 uv sync
 
 # 2) 이 배포 초기화 (프로젝트 이름 지정, 1회). CREW_ROOT 불필요 — 현재 폴더가 루트
-#    출력에 고유 id가 표시됩니다 (예: my-crew-fox42) — 컨테이너는 `my-crew-fox42-...`
+#    출력에 고유 id가 표시됩니다 (예: my-crew-3f9a2c) — 컨테이너는 `my-crew-3f9a2c-...`
 uv run crew init my-crew
 
 # 3) 격리된 인스턴스 생성 (기본 타입: hermes). 포트는 자동 배정됩니다.
@@ -62,11 +62,11 @@ uv run crew shell alice
 
 ## 핵심 개념
 
-- **인스턴스(instance)** — 비서 한 "명". 격리된 Docker 컨테이너 1개 + 전용 `data/` 폴더. 기억·세션·키·신원이 모두 분리됩니다.
+- **인스턴스(instance)** — 비서 한 "명". 격리된 Docker 컨테이너 1개 + 전용 `data/` 폴더. 기억·세션·키·신원이 모두 분리됩니다. 디스크상 폴더는 `data/instances/<name>-<hex>/`, 컨테이너는 `<project>-<name>-<hex>` 로 해시가 붙지만(예: `crew create ted` → `data/instances/ted-9b8c7d/`, 컨테이너 `synt-3f9a2c-ted-9b8c7d`), 명령에서는 그냥 평범한 이름으로 지칭합니다(`crew status ted`, `crew logs ted`, `crew rm ted`) — 해시는 내부/디스크상 용도입니다. 지우고 다시 만들면(`crew rm ted --purge` 후 `crew create ted`) **새 해시**가 배정되어 남아 있던 잔여물과 절대 충돌하지 않습니다.
 
-- **배포(deployment)** — 배포 디렉터리 하나가 한 배포입니다(`crew` 는 현재 폴더에서 위로 올라가며 배포 마커인 `data/_shared.env` 가 있는 가장 가까운 폴더를 배포 루트로 잡습니다 — 환경변수 불필요). 모든 런타임 상태는 그 폴더의 **gitignore된 `data/` 한곳**에 모이고(추적 코드·설정은 최상위에 남음), **백업·이전은 `data/` 폴더 하나만 복사**하면 됩니다. `crew init` 이 프로젝트 이름(`CREW_PROJECT`)과 게이트웨이 포트를 정하는데, 이때 **고유 접미사가 붙은 id**를 배정합니다(예: `crew init synt` → `synt-fox42`, init 출력에 표시). 모든 Docker 객체는 그 id로 prefix됩니다(`synt-fox42-alice`, `synt-fox42-gateway-router` …). 덕분에 **이름이 같은 두 배포가 다른 폴더에 있어도 절대 충돌하지 않고**, `prod`·`smoke` 같은 **여러 배포가 한 머신에서 동시에 공존**합니다(이름·포트가 겹치면 조용히 덮어쓰지 않고 에러로 막습니다).
+- **배포(deployment)** — 배포 디렉터리 하나가 한 배포입니다(`crew` 는 현재 폴더에서 위로 올라가며 배포 마커인 `data/_shared.env` 가 있는 가장 가까운 폴더를 배포 루트로 잡습니다 — 환경변수 불필요). 모든 런타임 상태는 그 폴더의 **gitignore된 `data/` 한곳**에 모이고(추적 코드·설정은 최상위에 남음), **백업·이전은 `data/` 폴더 하나만 복사**하면 됩니다. `crew init` 이 프로젝트 이름(`CREW_PROJECT`)과 게이트웨이 포트를 정하는데, 이때 **라벨 + 16진수 6자리 접미사가 붙은 id**를 배정합니다(예: `crew init synt` → `synt-3f9a2c`, init 출력에 표시). 모든 Docker 객체는 그 id로 prefix됩니다(`synt-3f9a2c-ted-9b8c7d`, `synt-3f9a2c-gateway-router` …). 덕분에 **이름이 같은 두 배포가 다른 폴더에 있어도 절대 충돌하지 않고**, `prod`·`smoke` 같은 **여러 배포가 한 머신에서 동시에 공존**합니다(이름·포트가 겹치면 조용히 덮어쓰지 않고 에러로 막습니다).
 
-- **데이터 레이어(layer)** — 여러 비서가 공유할 자료(문서·가이드·브랜드 톤)를 **읽기 전용**으로 주입합니다. `data/layers/<이름>/` 폴더를 만들고 `crew create alice --layer knowledge` 로 마운트하면, 비서는 읽되 고칠 수 없습니다. 기본은 "아무 레이어도 안 붙음".
+- **데이터 레이어(layer)** — 여러 비서가 공유할 자료(문서·가이드·브랜드 톤)를 **읽기 전용**으로 주입합니다. `data/layers/<이름>/` 폴더를 만들고 `crew create alice --layer knowledge` 로 마운트하면, 비서는 읽되 고칠 수 없습니다. 기본은 "아무 레이어도 안 붙음". 레이어는 `data/layers/` 안에 살므로 **`data/` 백업과 함께 따라옵니다** — 이전·복원할 때는 인스턴스만이 아니라 **`data/` 폴더 전체를 통째로 옮기세요**(인스턴스는 자기가 참조하는 레이어가 있어야 하며, 참조된 레이어가 없으면 `crew update` 가 조용히 빈 마운트로 넘어가지 않고 **에러로 막습니다**).
 
 - **자격증명 번들(credential)** — 공통 API 키를 `credentials/<이름>.env` 파일로 묶어 `crew create alice --credential anthropic` 로 주입합니다. 값은 compose 파일에 박히지 않고 런타임에 읽힙니다. (텔레그램 등 메신저 연동은 옵션이며 기본 비활성 — 토큰이 필요하면 이 번들로 주입하면 됩니다.)
 
