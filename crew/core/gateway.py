@@ -145,11 +145,7 @@ def gateway_up(root: Path) -> dict:
     dep = load_deployment(root)
     check_tailscale_up(run_capture=_run_capture)
     emails = discovery.union_emails(root)
-    if not emails:
-        raise ExposeError(
-            "no instance has a whitelist — set CREW_ALLOWED_EMAILS "
-            "(comma-separated Google accounts) in instances/<name>/instance.env "
-            "for at least one instance first.")
+    no_whitelist = not emails
     host = tailnet_dns_name(run_capture=_run_capture)
     redirect = f"https://{host}/oauth2/callback"
 
@@ -223,7 +219,8 @@ def gateway_up(root: Path) -> dict:
         shutil.rmtree(gdir, ignore_errors=True)
         raise
     return {"url": f"https://{host}/", "redirect_uri": redirect,
-            "local_url": f"http://127.0.0.1:{dep.local_port}/"}
+            "local_url": f"http://127.0.0.1:{dep.local_port}/",
+            "no_whitelist": no_whitelist}
 
 
 def gateway_down(root: Path) -> None:

@@ -72,6 +72,7 @@ def test_gateway_up_builds_runs_and_serves(tmp_path, monkeypatch):
 
     assert info["url"] == "https://h.ts.net/"
     assert info["redirect_uri"] == "https://h.ts.net/oauth2/callback"
+    assert info["no_whitelist"] is False
     run = [c for c in cmds if isinstance(c, list)]
     assert any(c[:2] == ["docker", "build"] for c in run)
     assert any(c[:2] == ["docker", "run"] for c in run)
@@ -80,12 +81,20 @@ def test_gateway_up_builds_runs_and_serves(tmp_path, monkeypatch):
     assert "a@x.com" in emails
 
 
-def test_gateway_up_refuses_without_whitelist(tmp_path, monkeypatch):
-    _full_shared(tmp_path)
+def test_gateway_up_warns_without_whitelist(tmp_path, monkeypatch):
+    _full_shared(tmp_path)   # OAuth config + CREW_PROJECT, but NO instance/whitelist
+    monkeypatch.setattr(gateway, "_run", lambda argv: None)
+    monkeypatch.setattr(gateway, "_run_quiet", lambda argv: None)
     monkeypatch.setattr(gateway, "_run_capture",
         lambda argv: '{"BackendState":"Running","Self":{"DNSName":"h.ts.net."}}')
-    with pytest.raises(ExposeError, match="whitelist"):
-        gateway.gateway_up(tmp_path)
+    monkeypatch.setattr(gateway, "_repo_root", lambda: ".")
+    monkeypatch.setattr(gateway, "_require_build_context", lambda r: None)
+    monkeypatch.setattr(gateway, "_container_exists", lambda name: False)
+    monkeypatch.setattr(gateway, "_port_free", lambda port: True)
+    monkeypatch.setattr(gateway, "_https_port_served", lambda port: False)
+    info = gateway.gateway_up(tmp_path)          # must NOT raise
+    assert info["no_whitelist"] is True
+    assert info["local_url"] == "http://127.0.0.1:9402/"
 
 
 def test_broker_build_and_run_argv():

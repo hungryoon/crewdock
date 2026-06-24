@@ -72,12 +72,28 @@ def test_gateway_up_invokes_core(monkeypatch, root):
     monkeypatch.setattr(gateway, "gateway_up", lambda r: {
         "url": "https://h.ts.net/",
         "redirect_uri": "https://h.ts.net/oauth2/callback",
-        "local_url": "http://127.0.0.1:9402/"})
+        "local_url": "http://127.0.0.1:9402/",
+        "no_whitelist": False})
     result = runner.invoke(cli.app, ["gateway", "up"])
     assert result.exit_code == 0
     assert "https://h.ts.net/" in result.stdout
     assert "oauth2/callback" in result.stdout
     assert "127.0.0.1:9402" in result.stdout
+    assert "CREW_ALLOWED_EMAILS" not in result.stdout
+
+
+def test_gateway_up_warns_without_whitelist(monkeypatch, root):
+    _patch(monkeypatch, root)
+    from crew.core import gateway
+    monkeypatch.setattr(gateway, "gateway_up", lambda r: {
+        "url": "https://h.ts.net/",
+        "redirect_uri": "https://h.ts.net/oauth2/callback",
+        "local_url": "http://127.0.0.1:9402/",
+        "no_whitelist": True})
+    result = runner.invoke(cli.app, ["gateway", "up"])
+    assert result.exit_code == 0
+    assert "CREW_ALLOWED_EMAILS" in result.stdout
+    assert "팀 뷰" in result.stdout
 
 
 def test_gateway_open_invokes_browser(monkeypatch, root):

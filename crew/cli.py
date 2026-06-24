@@ -137,6 +137,11 @@ def gateway_up():
     _console.print()
     _console.print("register this redirect URI in your Google OAuth client (once):")
     _console.print(f"  [cyan]{info['redirect_uri']}[/cyan]")
+    if info.get("no_whitelist"):
+        _console.print(
+            "[yellow]⚠ 아직 허용된 이메일이 없습니다 — 팀 뷰(SSO)는 아무도 들이지 않습니다.[/yellow]\n"
+            "  data/instances/<name>/instance.env 에 CREW_ALLOWED_EMAILS 설정 후 "
+            "`crew gateway reload`. (로컬 뷰는 지금 사용 가능)")
 
 
 @gateway_app.command("down")
