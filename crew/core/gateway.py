@@ -80,13 +80,14 @@ def broker_build_argv(repo_root: str, image: str) -> list[str]:
 
 
 def broker_run_argv(sock_dir_host: str, broker_secret: str,
-                    container: str, image: str) -> list[str]:
+                    container: str, image: str, project: str) -> list[str]:
     return [
         "docker", "run", "-d", "--pull", "never", "--name", container,
         "--restart", "unless-stopped",
         "-v", "/var/run/docker.sock:/var/run/docker.sock",
         "-v", f"{sock_dir_host}:{BROKER_SOCK_DIR_CONTAINER}",
         "-e", f"CREW_BROKER_SECRET={broker_secret}",
+        "-e", f"CREW_PROJECT={project}",
         image,
     ]
 
@@ -170,7 +171,7 @@ def gateway_up(root: Path) -> dict:
         _run(router_build_argv(_repo_root(), dep.router_image()))
         _run(broker_build_argv(_repo_root(), dep.broker_image()))
         _run(broker_run_argv(str(broker_dir.resolve()), broker_secret,
-                             dep.broker_container(), dep.broker_image()))
+                             dep.broker_container(), dep.broker_image(), dep.project))
         _run(router_run_argv(str(root.resolve()), dep.router_port, gateway_secret,
                              str(broker_dir.resolve()), broker_secret,
                              dep.router_container(), dep.router_image()))

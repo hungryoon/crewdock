@@ -57,3 +57,12 @@ def test_derived_names():
     assert dep.router_image() == "synt-gateway-router:local"
     assert dep.broker_image() == "synt-gateway-broker:local"
     assert dep.instance_project("alice") == "synt-alice"
+
+
+def test_two_projects_have_distinct_names():
+    a = Deployment(project="synt", https_port=443, router_port=9400, auth_port=9401)
+    b = Deployment(project="smoke", https_port=8443, router_port=9500, auth_port=9501)
+    assert a.router_container() != b.router_container()
+    assert a.instance_project("alice") != b.instance_project("alice")
+    assert a.instance_project("alice") == "synt-alice"
+    assert b.instance_project("alice") == "smoke-alice"

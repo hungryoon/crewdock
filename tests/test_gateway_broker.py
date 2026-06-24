@@ -2,9 +2,15 @@ import pytest
 from crew.gateway import broker
 
 
-def test_build_argv_ok():
+def test_build_argv_default_project():
     assert broker.build_argv("alice", "add", "openai-codex") == [
         "docker", "exec", "-i", "crew-alice",
+        "hermes", "auth", "add", "openai-codex", "--no-browser"]
+
+
+def test_build_argv_namespaced_project():
+    assert broker.build_argv("alice", "add", "openai-codex", project="synt") == [
+        "docker", "exec", "-i", "synt-alice",
         "hermes", "auth", "add", "openai-codex", "--no-browser"]
 
 

@@ -94,11 +94,12 @@ def test_broker_build_and_run_argv():
     assert "-f" in bb and any("broker.Dockerfile" in a for a in bb)
     assert dep.broker_image() in bb
     br = gateway.broker_run_argv("/abs/gw/broker", "BSECRET",
-                                 dep.broker_container(), dep.broker_image())
+                                 dep.broker_container(), dep.broker_image(), dep.project)
     assert br[:2] == ["docker", "run"]
     assert "test-gateway-broker" in br
     assert any(a == "/var/run/docker.sock:/var/run/docker.sock" for a in br)
     assert "CREW_BROKER_SECRET=BSECRET" in br
+    assert "CREW_PROJECT=test" in br
 
 
 def test_router_run_argv_gets_broker_wiring():

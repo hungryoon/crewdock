@@ -7,6 +7,7 @@ from aiohttp import web
 
 _SECRET = os.environ.get("CREW_BROKER_SECRET") or None
 _SOCK = os.environ.get("CREW_BROKER_SOCK", "/run/crew-broker/broker.sock")
+_PROJECT = os.environ.get("CREW_PROJECT", "crew")
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,29}$")
 _PROVIDERS = {"openai-codex", "nous", "qwen-oauth", "anthropic", "openrouter"}
 _ACTIONS = {"add"}
@@ -19,7 +20,8 @@ def strip_ansi(s: str) -> str:
     return _ANSI.sub("", s)
 
 
-def build_argv(instance: str, action: str, provider: str) -> list[str]:
+def build_argv(instance: str, action: str, provider: str,
+               project: str = _PROJECT) -> list[str]:
     """Strict, shell-free argv for the one allowed operation. Raises ValueError
     on any non-whitelisted input."""
     if not _NAME_RE.match(instance):
@@ -28,7 +30,7 @@ def build_argv(instance: str, action: str, provider: str) -> list[str]:
         raise ValueError("invalid action")
     if provider not in _PROVIDERS:
         raise ValueError("invalid provider")
-    return ["docker", "exec", "-i", f"crew-{instance}",
+    return ["docker", "exec", "-i", f"{project}-{instance}",
             "hermes", "auth", "add", provider, "--no-browser"]
 
 
