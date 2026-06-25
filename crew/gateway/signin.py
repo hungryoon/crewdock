@@ -43,8 +43,10 @@ def _css(font_uri: str) -> str:
         "  .card { background:var(--panel); border:1px solid var(--border);\n"
         "    border-radius:12px; padding:30px 28px; display:flex;\n"
         "    flex-direction:column; gap:16px; text-align:center; }\n"
-        "  .brand { font-size:18px; font-weight:600; letter-spacing:-0.01em; }\n"
+        "  .brand { font-size:18px; font-weight:600; letter-spacing:-0.01em;\n"
+        "    display:flex; align-items:center; justify-content:center; gap:8px; }\n"
         "  .brand .p { color:var(--accent); }\n"
+        "  .logo { flex:none; display:block; }\n"
         "  .sub, .msg { font-size:12px; color:var(--muted); margin:0; }\n"
         "  form { margin:0; }\n"
         "  .btn { display:block; width:100%; font:inherit; font-size:13px;\n"
@@ -111,13 +113,15 @@ def render_sign_in(font_uri: str) -> str:
         '<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         "<title>crew ~ sign in</title>\n"
+        '<link rel="icon" href="' + theme.FAVICON_HREF + '">\n'
         "<style>\n  " + _css(font_uri) + "\n</style>\n"
         "</head>\n"
         "<body>\n"
         "<main>\n"
         '  <div class="card">\n'
         '    {{ if .LogoData }}<div class="logo">{{.LogoData}}</div>{{ end }}\n'
-        '    <div class="brand"><span class="p">crew</span>&nbsp;~&nbsp;sign in</div>\n'
+        '    <div class="brand">' + theme.logo_svg(22)
+        + '<span><span class="p">crew</span>&nbsp;~&nbsp;sign in</span></div>\n'
         '    <p class="sub">Authentication required to continue.</p>\n'
         '    {{ if .SignInMessage }}<p class="msg">{{.SignInMessage}}</p>{{ end }}\n'
         '    <form method="GET" action="{{.ProxyPrefix}}/start">\n'
@@ -164,6 +168,7 @@ def render_error(font_uri: str) -> str:
         '<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         "<title>{{.StatusCode}} {{.Title}}</title>\n"
+        '<link rel="icon" href="' + theme.FAVICON_HREF + '">\n'
         "<style>\n  " + _css(font_uri) + "\n</style>\n"
         "</head>\n"
         "<body>\n"

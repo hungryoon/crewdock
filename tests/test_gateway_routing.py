@@ -258,6 +258,13 @@ def test_render_index_emails_button_local_only():
     assert ".elist" not in sso          # emails CSS must not leak into SSO output
 
 
+def test_render_index_has_favicon_and_logo():
+    from crew.gateway import theme
+    html = routing.render_index("a@x.com", [{"name": "a", "up": True}])
+    assert theme.FAVICON_HREF in html              # favicon link present
+    assert theme.logo_svg(20) in html              # header brand mark present
+
+
 def test_render_index_emails_modal_before_script():
     # The emails JS captures #emodal (and #e-* children) into top-level consts at
     # parse time, so the modal must appear BEFORE the <script> block — exactly like

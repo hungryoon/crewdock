@@ -241,6 +241,7 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>crew</title>
+<link rel="icon" href="{theme.FAVICON_HREF}">
 <style>
   @font-face {{ font-family: "JetBrainsMono"; font-display: swap;
     src: url("/_assets/JetBrainsMono-Regular.woff2") format("woff2"); }}
@@ -253,8 +254,10 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
   header {{ display:flex; align-items:baseline; justify-content:space-between;
     gap:12px; flex-wrap:wrap; padding-bottom:14px; margin-bottom:26px;
     border-bottom:1px solid var(--border); }}
-  h1 {{ margin:0; font-size:18px; font-weight:600; letter-spacing:-0.01em; }}
+  h1 {{ margin:0; font-size:18px; font-weight:600; letter-spacing:-0.01em;
+    display:flex; align-items:center; gap:9px; }}
   h1 .p {{ color:var(--accent); }}
+  .logo {{ flex:none; display:block; }}
   .who {{ font-size:12px; color:var(--muted); }}
   .list {{ display:flex; flex-direction:column; gap:10px; }}
   .row {{ display:flex; flex-direction:column; gap:8px; padding:13px 16px;
@@ -304,7 +307,7 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
 <body>
 <main>
   <header>
-    <h1><span class="p">crew</span>&nbsp;~&nbsp;instances</h1>
+    <h1>{theme.logo_svg(20)}<span class="t"><span class="p">crew</span>&nbsp;~&nbsp;instances</span></h1>
     <span class="who">{_html.escape(email)}</span>
   </header>
   {body}

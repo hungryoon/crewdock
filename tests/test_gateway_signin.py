@@ -12,6 +12,25 @@ def test_theme_palette_has_gateway_accent():
     assert "color-scheme: dark light;" in theme.ROOT_VARS
 
 
+# --- brand mark (logo + favicon) ---
+
+def test_logo_svg_uses_accent_and_sizes():
+    svg = theme.logo_svg(20)
+    assert svg.startswith("<svg") and 'width="20"' in svg and 'height="20"' in svg
+    assert theme.PALETTE["accent"] in svg          # tilde stroke in accent green
+
+
+def test_favicon_href_is_inline_svg():
+    assert theme.FAVICON_HREF.startswith("data:image/svg+xml;base64,")
+    assert len(theme.FAVICON_HREF) > 100
+
+
+def test_signin_page_has_favicon_and_logo():
+    html = signin.render_sign_in("data:font/woff2;base64,AAAA")
+    assert theme.FAVICON_HREF in html              # favicon link
+    assert "<svg" in html                          # brand mark rendered
+
+
 # --- font inlining ---
 
 def test_font_data_uri_is_inline_woff2():
