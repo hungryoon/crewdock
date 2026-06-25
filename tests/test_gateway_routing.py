@@ -245,6 +245,11 @@ def test_render_index_emails_button_local_only():
     local = routing.render_index("local", cards, local=True)
     assert 'class="emails"' in local
     assert 'data-emails="alice-aaaaaa"' in local
+    # emails is an action button: it lives in the right-aligned .actions group,
+    # alongside model + dashboard, not stranded next to the llm chip on the left.
+    actions = local[local.index('<span class="actions">'):]
+    assert 'class="emails"' in actions
+    assert 'class="setup"' in actions and 'class="go"' in actions
     assert ".elist" in local            # emails CSS present in the local render
     # not present in the SSO (non-local) render
     sso = routing.render_index("a@x.com", cards, local=False)

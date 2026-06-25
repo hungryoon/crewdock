@@ -153,9 +153,11 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
                 f'<span class="name">{name}</span>'
                 f'<span class="state">{"running" if c["up"] else "down"}</span>'
                 f'{llm}'
+                f'<span class="actions">'
                 f'{emails_btn}'
                 f'<button class="setup" data-setup="{iid}" data-label="{name}">&#9881; model</button>'
                 f'<a class="go" href="/i/{name}/">dashboard</a>'
+                f'</span>'
                 f'</div>\n'
                 f'        <div class="detail">{chips}</div>\n'
                 f'      </div>'
@@ -267,7 +269,8 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
   .llm {{ font-size:11px; border:1px solid var(--border); border-radius:5px; padding:1px 7px; }}
   .llm.ok {{ color:var(--accent); border-color:var(--accent); }}
   .llm.no {{ color:#e07a8a; border-color:#5a3a42; }}
-  .go {{ margin-left:8px; color:var(--accent2); font-size:11px; text-decoration:none;
+  .actions {{ margin-left:auto; display:flex; align-items:center; gap:8px; }}
+  .go {{ color:var(--accent2); font-size:11px; text-decoration:none;
     border:1px solid var(--accent2); border-radius:5px; padding:2px 9px; opacity:.9; }}
   .go:hover {{ opacity:1; background:rgba(245,231,200,.08); }}
   .detail {{ display:flex; flex-wrap:wrap; gap:6px; }}
@@ -275,7 +278,7 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
     border:1px solid var(--border); border-radius:5px; padding:1px 7px; }}
   .kv.rb {{ color:var(--accent2); border-color:var(--accent2); opacity:.85; }}
   .empty {{ color:var(--muted); }}
-  .setup {{ margin-left:auto; font:inherit; font-size:11px; cursor:pointer;
+  .setup {{ font:inherit; font-size:11px; cursor:pointer;
     color:var(--fg); background:transparent; border:1px solid var(--border);
     border-radius:5px; padding:2px 9px; }}
   .setup:hover {{ border-color:var(--accent); }}
