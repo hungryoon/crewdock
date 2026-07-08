@@ -126,6 +126,78 @@ def _detail_kvs(c: dict) -> list[str]:
     return kvs
 
 
+def _terminal_modal() -> str:
+    """Self-contained terminal modal: its own styles + an xterm mount point.
+    Kept out of render_index's f-string to keep that function readable."""
+    return """
+<link rel="stylesheet" href="/_assets/xterm.css">
+<style>
+  .term { font:inherit; font-size:11px; cursor:pointer; color:var(--fg);
+    background:transparent; border:1px solid var(--border); border-radius:5px;
+    padding:2px 9px; }
+  .term:hover { border-color:var(--accent); }
+  .term-dialog { max-width:900px; }
+  .term-note { font-size:11px; color:var(--muted); }
+  #t-term { height:60vh; background:#000; border:1px solid var(--border);
+    border-radius:6px; padding:6px; }
+</style>
+<div class="modal" id="tmodal" hidden>
+  <div class="dialog term-dialog">
+    <h2>terminal &mdash; <span class="i" id="t-inst"></span></h2>
+    <div class="term-note">작업은 <code>/opt/data</code> 안에 — 그 외 경로는 인스턴스 재생성 시 사라집니다. (root 아님)</div>
+    <div id="t-term"></div>
+    <div class="drow"><button class="close" id="t-close">close</button></div>
+  </div>
+</div>"""
+
+
+def _terminal_script() -> str:
+    """xterm ⇄ /_term wiring. stdin/output are binary frames; resize is JSON."""
+    return """
+  let termWs = null, term = null, fit = null;
+  const tmodal = document.getElementById("tmodal");
+  const tInst = document.getElementById("t-inst");
+  function tSendResize() {
+    if (term && termWs && termWs.readyState === 1)
+      termWs.send(JSON.stringify({resize: {cols: term.cols, rows: term.rows}}));
+  }
+  function tOnResize() { if (term && fit) { fit.fit(); tSendResize(); } }
+  function closeTerm() {
+    tmodal.hidden = true;
+    window.removeEventListener("resize", tOnResize);
+    if (termWs) { try { termWs.close(); } catch (e) {} termWs = null; }
+    if (term) { term.dispose(); term = null; fit = null; }
+  }
+  function openTerm(iid, label) {
+    tInst.textContent = label || iid;
+    tmodal.hidden = false;
+    term = new Terminal({fontFamily: "JetBrainsMono, ui-monospace, monospace",
+      fontSize: 13, cursorBlink: true});
+    fit = new FitAddon.FitAddon();
+    term.loadAddon(fit);
+    term.open(document.getElementById("t-term"));
+    fit.fit();
+    window.addEventListener("resize", tOnResize);
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    termWs = new WebSocket(proto + "//" + location.host
+      + "/_term?instance=" + encodeURIComponent(iid));
+    termWs.binaryType = "arraybuffer";
+    termWs.onopen = () => { tSendResize(); term.focus(); };
+    termWs.onmessage = (ev) => { term.write(new Uint8Array(ev.data)); };
+    termWs.onclose = () => { if (term) term.write("\\r\\n[connection closed]\\r\\n"); };
+    term.onData((d) => {
+      if (termWs && termWs.readyState === 1)
+        termWs.send(new TextEncoder().encode(d));
+    });
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest(".term");
+    if (b) { openTerm(b.dataset.term, b.dataset.label); return; }
+    if (e.target === tmodal || e.target.closest("#t-close")) { closeTerm(); return; }
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeTerm(); });"""
+
+
 def render_index(email: str, cards: list[dict], local: bool = False) -> str:
     if cards:
         def row(c: dict) -> str:
@@ -155,6 +227,7 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
                 f'{llm}'
                 f'<span class="actions">'
                 f'{emails_btn}'
+                f'<button class="term" data-term="{iid}" data-label="{name}">&#9000; terminal</button>'
                 f'<button class="setup" data-setup="{iid}" data-label="{name}">&#9881; model</button>'
                 f'<a class="go" href="/i/{name}/">dashboard</a>'
                 f'</span>'
@@ -330,6 +403,9 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
   </div>
 </div>
 {emails_modal}
+{_terminal_modal()}
+<script src="/_assets/xterm.js"></script>
+<script src="/_assets/addon-fit.js"></script>
 <script>
   async function refresh() {{
     try {{
@@ -375,6 +451,7 @@ def render_index(email: str, cards: list[dict], local: bool = False) -> str:
   }});
   document.addEventListener("keydown", (e) => {{ if (e.key === "Escape") closeModal(); }});
 {emails_script}
+{_terminal_script()}
 </script>
 </body>
 </html>
