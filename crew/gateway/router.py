@@ -10,10 +10,14 @@ from aiohttp import web
 
 from crew.gateway import discovery, routing
 from crew.core import paths
+from crew.core.creds import parse_env_file
 
 _ASSETS_DIR = Path(__file__).resolve().parent / "assets"
-_ASSET_WHITELIST = {"JetBrainsMono-Regular.woff2"}
+_ASSET_WHITELIST = {"JetBrainsMono-Regular.woff2",
+                    "xterm.js", "xterm.css", "addon-fit.js"}
 mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
 
 _EMAIL_HEADER = "X-Forwarded-Email"
 # Shared secret only oauth2-proxy injects (as the Basic-auth password). When set,
@@ -44,8 +48,9 @@ async def _assets(request: web.Request) -> web.StreamResponse:
     path = _ASSETS_DIR / name
     if not path.is_file():
         raise web.HTTPNotFound()
+    ctype, _ = mimetypes.guess_type(name)
     return web.FileResponse(path, headers={
-        "Content-Type": "font/woff2",
+        "Content-Type": ctype or "application/octet-stream",
         "Cache-Control": "public, max-age=86400",
     })
 
@@ -250,6 +255,67 @@ async def _setup(request: web.Request) -> web.StreamResponse:
     return ws
 
 
+async def _term(request: web.Request) -> web.StreamResponse:
+    """Interactive shell into the instance, bridged to the broker's /pty. Same
+    email authz as the dashboard proxy; keystrokes/output are binary frames,
+    resize is a TEXT frame — forwarded verbatim to the broker."""
+    _require_gateway(request)
+    email = _viewer_email(request)
+    instance = request.query.get("instance", "")   # instance_id (hashed dir)
+    pubs = _published()
+    p = next((x for x in pubs if x.instance_id == instance), None)
+    if p is None or not _authorized(email, p.name, pubs):
+        raise web.HTTPForbidden()
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    if not _BROKER_SOCK:
+        await ws.send_bytes(b"terminal service is not running\r\n")
+        await ws.close()
+        return ws
+    env = parse_env_file(paths.instance_env_path(_root(), instance))
+    uid, gid = env.get("HERMES_UID"), env.get("HERMES_GID")
+    if not (uid and gid):
+        await ws.send_bytes(b"instance predates the terminal feature; "
+                            b"recreate it to enable a shell\r\n")
+        await ws.close()
+        return ws
+    qs = urllib.parse.urlencode({"instance": instance, "uid": uid, "gid": gid,
+                                 "workdir": "/opt/data"})
+    headers = {"X-Crew-Broker-Secret": _BROKER_SECRET or ""}
+    conn = aiohttp.UnixConnector(path=_BROKER_SOCK)
+    try:
+        async with aiohttp.ClientSession(connector=conn) as s:
+            async with s.ws_connect(f"http://broker/pty?{qs}", headers=headers) as up:
+                async def browser_to_broker():
+                    async for msg in ws:
+                        if msg.type == aiohttp.WSMsgType.BINARY:
+                            await up.send_bytes(msg.data)
+                        elif msg.type == aiohttp.WSMsgType.TEXT:
+                            await up.send_str(msg.data)
+                        else:
+                            break
+                    await up.close()
+
+                async def broker_to_browser():
+                    async for msg in up:
+                        if msg.type == aiohttp.WSMsgType.BINARY and not ws.closed:
+                            await ws.send_bytes(msg.data)
+                        elif msg.type in (aiohttp.WSMsgType.CLOSE,
+                                          aiohttp.WSMsgType.CLOSING,
+                                          aiohttp.WSMsgType.CLOSED,
+                                          aiohttp.WSMsgType.ERROR):
+                            break
+
+                await asyncio.gather(browser_to_broker(), broker_to_browser(),
+                                     return_exceptions=True)
+    except (aiohttp.ClientError, OSError):
+        if not ws.closed:
+            await ws.send_bytes(b"could not reach terminal service\r\n")
+    if not ws.closed:
+        await ws.close()
+    return ws
+
+
 def _email_ok(e: str) -> bool:
     return bool(e) and "@" in e and "," not in e and not any(c.isspace() for c in e)
 
@@ -297,6 +363,7 @@ def build_app() -> web.Application:
     app.router.add_get("/_assets/{name}", _assets)
     app.router.add_get("/_status.json", _status_json)
     app.router.add_get("/_setup", _setup)
+    app.router.add_get("/_term", _term)
     app.router.add_get("/_emails", _emails_get)
     app.router.add_post("/_emails", _emails_post)
     app.router.add_route("*", "/i/{tail:.*}", _proxy)
