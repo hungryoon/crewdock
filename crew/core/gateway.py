@@ -10,6 +10,7 @@ from crew.core.errors import ExposeError
 from crew.core.expose import (
     OAUTH2_IMAGE, load_shared_oauth, _run, _run_quiet, _run_capture,
     tailnet_dns_name, check_tailscale_up, serve_argv, serve_off_argv,
+    tailscale_bin,
 )
 from crew.gateway import discovery, signin
 
@@ -77,7 +78,8 @@ def gateway_ports(root: Path) -> dict | None:
 
 def _https_port_served(port: int) -> bool:
     try:
-        data = json.loads(_run_capture(["tailscale", "serve", "status", "--json"]))
+        data = json.loads(
+            _run_capture([tailscale_bin(), "serve", "status", "--json"]))
     except Exception:
         return False
     return str(port) in (data.get("TCP") or {})

@@ -11,10 +11,29 @@ def _setup_shared(root, body):
 
 
 def test_serve_argv_on_and_off():
+    ts = expose.tailscale_bin()
     assert expose.serve_argv(9120, 9300) == [
-        "tailscale", "serve", "--bg", "--https=9120", "http://127.0.0.1:9300"]
+        ts, "serve", "--bg", "--https=9120", "http://127.0.0.1:9300"]
     assert expose.serve_off_argv(9120) == [
-        "tailscale", "serve", "--https=9120", "off"]
+        ts, "serve", "--https=9120", "off"]
+
+
+def test_tailscale_bin_prefers_path(monkeypatch):
+    monkeypatch.setattr(expose.shutil, "which", lambda _: "/usr/bin/tailscale")
+    assert expose.tailscale_bin() == "/usr/bin/tailscale"
+
+
+def test_tailscale_bin_falls_back_to_macos_app_bundle(monkeypatch):
+    monkeypatch.setattr(expose.shutil, "which", lambda _: None)
+    monkeypatch.setattr(expose.os.path, "exists",
+                        lambda p: p == expose.TAILSCALE_APP_BIN)
+    assert expose.tailscale_bin() == expose.TAILSCALE_APP_BIN
+
+
+def test_tailscale_bin_stays_bare_when_nothing_found(monkeypatch):
+    monkeypatch.setattr(expose.shutil, "which", lambda _: None)
+    monkeypatch.setattr(expose.os.path, "exists", lambda _: False)
+    assert expose.tailscale_bin() == "tailscale"
 
 
 def test_tailnet_dns_name_strips_trailing_dot():

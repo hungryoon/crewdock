@@ -80,7 +80,7 @@ def test_gateway_up_builds_runs_and_serves(tmp_path, monkeypatch):
     run = [c for c in cmds if isinstance(c, list)]
     assert any(c[:2] == ["docker", "build"] for c in run)
     assert any(c[:2] == ["docker", "run"] for c in run)
-    assert any(c[:2] == ["tailscale", "serve"] for c in run)
+    assert any(c[:2] == [gateway.tailscale_bin(), "serve"] for c in run)
     emails = (tmp_path / "data" / "_gateway" / "emails.txt").read_text()
     assert "a@x.com" in emails
     # custom oauth2-proxy templates are generated and bind-mounted into the auth container
@@ -146,7 +146,7 @@ def test_gateway_up_rolls_back_on_run_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(gateway, "_run_quiet", lambda argv: quiet.append(argv))
 
     def fake_run(argv):
-        if argv[:2] == ["tailscale", "serve"]:
+        if argv[:2] == [gateway.tailscale_bin(), "serve"]:
             raise ExposeError("serve boom")
     monkeypatch.setattr(gateway, "_run", fake_run)
 
@@ -222,7 +222,7 @@ def test_gateway_up_allocates_alternate_ports_when_preferred_busy(tmp_path, monk
     assert gateway.gateway_ports(tmp_path) == {"router": 9500, "auth": 9501, "local": 9502}
     run = [c for c in cmds if isinstance(c, list)]
     # tailscale serve maps the fixed HTTPS port to the chosen auth port
-    assert any(c[:2] == ["tailscale", "serve"] and "9501" in " ".join(c) for c in run)
+    assert any(c[:2] == [gateway.tailscale_bin(), "serve"] and "9501" in " ".join(c) for c in run)
 
 
 def test_gateway_up_errors_when_build_context_missing(tmp_path, monkeypatch):
@@ -383,5 +383,5 @@ def test_free_https_port_calls_serve_off(tmp_path, monkeypatch):
     seen = []
     monkeypatch.setattr(gateway, "_run_quiet", lambda argv: seen.append(argv))
     gateway.free_https_port(tmp_path)
-    assert seen == [["tailscale", "serve", "--https=443", "off"]]
+    assert len(seen) == 1
     assert seen[0] == gateway.serve_off_argv(443)

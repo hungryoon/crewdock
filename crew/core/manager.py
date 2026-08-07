@@ -107,6 +107,14 @@ def _container_exists(name: str) -> bool:
     return bool((out.stdout or "").strip())
 
 
+def _force_remove_container(name: str) -> None:
+    """Remove a container by name, ignoring 'no such container'."""
+    if not _container_exists(name):
+        return
+    subprocess.run(["docker", "rm", "-f", name],
+                   capture_output=True, text=True, check=False)
+
+
 def _validate_layers(root: Path, layers: list[str]) -> None:
     available = set(paths.list_layers(root))
     for layer in layers:
@@ -167,10 +175,12 @@ def create(root: Path, name: str, type: str, creds: dict,
                 ["up", "-d"],
             )
         except Exception:
-            try:
-                _purge_dir(inst_dir)
-            except Exception:
-                pass
+            # `up -d` can raise with the container already created and running,
+            # so tear it down before purging — otherwise the agent inside keeps
+            # writing (read-only skill dirs), _purge_dir fails, and the orphan
+            # container outlives the deployment that was supposed to own it.
+            _rollback(dep.instance_project(iid), paths.compose_path(root, iid),
+                      _env_files(root, iid), inst_dir)
             raise
 
     # New instance's whitelist (if any) joins the gateway SSO allowlist.
@@ -179,6 +189,25 @@ def create(root: Path, name: str, type: str, creds: dict,
     gateway.regenerate_union_emails(root)
     return Instance(name=name, type=type, port=port, image=manifest.image,
                     timezone=tz, state="running")
+
+
+def _rollback(project: str, compose_file: Path, env_files: list[Path],
+              inst_dir: Path) -> None:
+    """Best-effort cleanup after a failed create: container first, then dir.
+    Never raises — the original failure is what the caller must see — but says
+    on stderr what it could not clean, so leftovers aren't silent."""
+    steps = []
+    if compose_file.exists():
+        steps.append(("container",
+                      lambda: run_compose(project, compose_file, env_files,
+                                          ["down"])))
+    steps.append(("directory", lambda: _purge_dir(inst_dir)))
+    for what, step in steps:
+        try:
+            step()
+        except Exception as exc:
+            print(f"warning: could not remove the failed instance's {what}: "
+                  f"{exc}", file=sys.stderr)
 
 
 def _resolve(root: Path, name: str) -> str:
@@ -193,12 +222,19 @@ def _resolve(root: Path, name: str) -> str:
 def remove(root: Path, name: str, purge: bool = False) -> None:
     iid = _resolve(root, name)
     dep = load_deployment(root)
-    run_compose(
-        dep.instance_project(iid),
-        paths.compose_path(root, iid),
-        _env_files(root, iid),
-        ["down"],
-    )
+    compose_file = paths.compose_path(root, iid)
+    if compose_file.exists():
+        run_compose(
+            dep.instance_project(iid),
+            compose_file,
+            _env_files(root, iid),
+            ["down"],
+        )
+    else:
+        # A create that died before writing compose leaves a dir (and sometimes
+        # a container) that compose can no longer drive. Name is enough to kill
+        # it — container_name is exactly instance_project(iid).
+        _force_remove_container(dep.instance_project(iid))
     if purge:
         _purge_dir(paths.instance_dir(root, iid))
     # Keep the gateway SSO allowlist in sync with the surviving instances'
@@ -327,11 +363,17 @@ def lifecycle(root: Path, name: str, action: str) -> None:
     dep = load_deployment(root)
     if action not in _LIFECYCLE:
         raise ValueError(f"unknown lifecycle action: {action}")
+    # `compose start` needs an existing container. After a host move (data
+    # copied, nothing created yet) there is none, so start means create.
+    # Checked against docker directly: `compose ps` reports never-created and
+    # stopped identically (exit 0, no output), so it can't make this call.
+    if action == "start" and not _container_exists(dep.instance_project(iid)):
+        action = "up"
     run_compose(
         dep.instance_project(iid),
         paths.compose_path(root, iid),
         _env_files(root, iid),
-        [action],
+        ["up", "-d"] if action == "up" else [action],
     )
 
 

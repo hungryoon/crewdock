@@ -145,6 +145,46 @@ def test_create_rollback_on_up_failure(root, monkeypatch):
     assert paths.resolve_instance_id(root, "alice") is None
 
 
+def test_create_rollback_tears_down_the_container_it_may_have_started(
+        root, monkeypatch):
+    """`up -d` can fail with the container already up. If rollback only deletes
+    the directory, that container outlives the deployment and keeps running."""
+    _agents_dir(root)
+    seen = []
+
+    def fake_run(project, compose_file, env_files, args, capture=False):
+        seen.append(args)
+        if args == ["up", "-d"]:
+            raise RuntimeError("up reported failure but the container is live")
+        class R:
+            stdout = ""
+        return R()
+
+    monkeypatch.setattr(manager, "run_compose", fake_run)
+    with pytest.raises(RuntimeError):
+        manager.create(root, "alice", type="hermes",
+                       creds={"TELEGRAM_BOT_TOKEN": "t"})
+    assert ["down"] in seen
+    assert paths.resolve_instance_id(root, "alice") is None
+
+
+def test_remove_kills_an_orphan_left_by_a_failed_create(root, monkeypatch):
+    """A create that died before writing compose leaves a dir compose can no
+    longer drive — rm must still reach the container, by name."""
+    _agents_dir(root)
+    inst_dir = root / "data" / "instances" / "motivatio-22dd11"
+    (inst_dir / "data").mkdir(parents=True)   # no meta.json, no compose file
+    killed = []
+    monkeypatch.setattr(manager, "_container_exists", lambda name: True)
+    monkeypatch.setattr(manager.subprocess, "run",
+                        lambda argv, **k: killed.append(argv))
+
+    manager.remove(root, "motivatio", purge=True)   # the name `crew list` shows
+
+    assert killed == [["docker", "rm", "-f", "test-motivatio-22dd11"]]
+    assert not inst_dir.exists()
+
+
 def test_create_with_layers_mounts_and_records_them(root, calls):
     _agents_dir(root)
     (root / "data" / "layers" / "knowledge").mkdir(parents=True)
@@ -313,16 +353,29 @@ def test_list_survives_corrupt_instance(root, monkeypatch):
     assert names == ["alice"]
 
 
-def test_lifecycle_start_stop_restart(root, calls):
+def test_lifecycle_start_stop_restart(root, calls, monkeypatch):
     _agents_dir(root)
     manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
     proj = _proj(root)
+    monkeypatch.setattr(manager, "_container_exists", lambda name: True)
     manager.lifecycle(root, "alice", "start")
     manager.lifecycle(root, "alice", "stop")
     manager.lifecycle(root, "alice", "restart")
     assert (proj, ["start"]) in calls
     assert (proj, ["stop"]) in calls
     assert (proj, ["restart"]) in calls
+
+
+def test_start_creates_the_container_when_none_exists(root, calls, monkeypatch):
+    """After a host move the data is there but nothing was ever created, and
+    `compose start` would fail on a missing container — start has to create."""
+    _agents_dir(root)
+    manager.create(root, "alice", type="hermes", creds={"TELEGRAM_BOT_TOKEN": "t"})
+    proj = _proj(root)
+    calls.clear()
+    monkeypatch.setattr(manager, "_container_exists", lambda name: False)
+    manager.lifecycle(root, "alice", "start")
+    assert calls == [(proj, ["up", "-d"])]
 
 
 def test_update_pulls_and_recreates(root, calls):

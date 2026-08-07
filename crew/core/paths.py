@@ -20,8 +20,12 @@ def new_instance_id(name: str) -> str:
 
 def resolve_instance_id(root: Path, name: str) -> str | None:
     """Resolve a user identifier to an instance_id (dir name): an exact dir name
-    (full id) wins; else the single dir whose meta `name` matches. Raises
-    CrewError if ambiguous (>1 base-name match). None if absent."""
+    (full id) wins; else the single dir whose base name matches. Raises
+    CrewError if ambiguous (>1 base-name match). None if absent.
+
+    Matching goes through instance_base_name, the same thing `crew list`
+    prints, so a dir left behind by a failed create (no meta.json) is still
+    addressable by the name shown in the listing."""
     idir = instances_dir(root)
     if not idir.exists():
         return None
@@ -29,7 +33,7 @@ def resolve_instance_id(root: Path, name: str) -> str | None:
         return name
     matches = [d.name for d in idir.iterdir()
                if d.is_dir() and not d.name.startswith("_")
-               and read_meta(root, d.name).get("name") == name]
+               and instance_base_name(root, d.name) == name]
     if len(matches) > 1:
         raise CrewError(
             f"ambiguous instance {name!r} — multiple match "
