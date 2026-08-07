@@ -1,5 +1,8 @@
 import json
+import os
+import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,13 +47,24 @@ def load_shared_oauth(root: Path) -> ExposeConfig:
 
 
 
+TAILSCALE_APP_BIN = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+
+
+def tailscale_bin() -> str:
+    """Path to the tailscale CLI. The macOS GUI app keeps it inside the bundle
+    and never puts it on PATH, so fall back to the bundle path. It must be run
+    by that real path — a symlink breaks the app's bundle-identifier lookup."""
+    return shutil.which("tailscale") or (
+        TAILSCALE_APP_BIN if os.path.exists(TAILSCALE_APP_BIN) else "tailscale")
+
+
 def serve_argv(https_port: int, authport: int) -> list[str]:
-    return ["tailscale", "serve", "--bg", f"--https={https_port}",
+    return [tailscale_bin(), "serve", "--bg", f"--https={https_port}",
             f"http://127.0.0.1:{authport}"]
 
 
 def serve_off_argv(https_port: int) -> list[str]:
-    return ["tailscale", "serve", f"--https={https_port}", "off"]
+    return [tailscale_bin(), "serve", f"--https={https_port}", "off"]
 
 
 def _run_capture(argv: list[str]) -> str:
@@ -58,19 +72,22 @@ def _run_capture(argv: list[str]) -> str:
         return subprocess.run(argv, check=True, text=True,
                               capture_output=True).stdout
     except FileNotFoundError as exc:
-        raise ExposeError(f"{argv[0]} not found — is it installed?") from exc
+        hint = (f" (the macOS app keeps it at {TAILSCALE_APP_BIN})"
+                if sys.platform == "darwin" and argv[0] == "tailscale" else "")
+        raise ExposeError(
+            f"{argv[0]} not found — is it installed?{hint}") from exc
     except subprocess.CalledProcessError as exc:
         raise ExposeError(
             f"{' '.join(argv)} failed (exit {exc.returncode})") from exc
 
 
 def tailnet_dns_name(run_capture=_run_capture) -> str:
-    data = json.loads(run_capture(["tailscale", "status", "--json"]))
+    data = json.loads(run_capture([tailscale_bin(), "status", "--json"]))
     return data["Self"]["DNSName"].rstrip(".")
 
 
 def check_tailscale_up(run_capture=_run_capture) -> None:
-    data = json.loads(run_capture(["tailscale", "status", "--json"]))
+    data = json.loads(run_capture([tailscale_bin(), "status", "--json"]))
     if data.get("BackendState") != "Running":
         raise ExposeError(
             "tailscale is not connected — run `tailscale up` first "
