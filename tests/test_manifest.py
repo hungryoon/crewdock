@@ -30,14 +30,41 @@ def test_load_manifest_network_defaults(manifest_file):
 
 def test_shipped_hermes_manifest_is_bridge_isolated():
     # The real shipped default manifest must be bridge-networked (isolated from
-    # the host router) with the dashboard bound 0.0.0.0 + insecure inside the
-    # container (safe: loopback-only host publish + per-instance bridge + gateway SSO).
+    # the host router) with the dashboard bound 0.0.0.0 inside the container
+    # (safe: loopback-only host publish + per-instance bridge + gateway SSO).
     from pathlib import Path
     repo_root = Path(__file__).resolve().parent.parent
     m = load_manifest(repo_root / "agents" / "hermes.yaml")
     assert m.network_mode == "bridge"
     assert m.static_env["HERMES_DASHBOARD_HOST"] == "0.0.0.0"
+
+
+def test_shipped_hermes_manifest_keeps_insecure_for_pre_hardening_images():
+    # Instances still pinned to a pre-June-2026 image open their dashboard ONLY
+    # via --insecure, which docker/s6-rc.d/dashboard/run derives from this var.
+    # Current images accept-and-ignore it (they just warn), so keeping it is a
+    # no-op there -- but drop it and every still-pinned instance loses its
+    # dashboard with no provider configured.
+    from pathlib import Path
+    repo_root = Path(__file__).resolve().parent.parent
+    m = load_manifest(repo_root / "agents" / "hermes.yaml")
     assert m.static_env["HERMES_DASHBOARD_INSECURE"] == "1"
+
+
+def test_shipped_hermes_manifest_satisfies_the_auth_gate():
+    # A 0.0.0.0 bind engages Hermes' auth gate, which needs a registered
+    # provider or the dashboard refuses to start. The basic provider's
+    # username+password is what opens it, and it is deliberately NOT the OIDC
+    # provider: an OIDC redirect_uri is derived per instance, so every new
+    # instance would need its callback registered by hand on the Google client.
+    from pathlib import Path
+    repo_root = Path(__file__).resolve().parent.parent
+    m = load_manifest(repo_root / "agents" / "hermes.yaml")
+    for key in ("HERMES_DASHBOARD_BASIC_AUTH_USERNAME",
+                "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD"):
+        assert key in m.passthrough_env, key
+    # No per-instance OAuth surface: nothing to register anywhere.
+    assert not [k for k in m.passthrough_env if "OIDC" in k or "PUBLIC_URL" in k]
 
 
 HOST_MODE_MANIFEST = """\

@@ -781,3 +781,51 @@ def test_update_keeps_existing_session_token(root, calls):
     manager.update(root, "alice")
     after = parse_env_file(paths.instance_env_path(root, iid))["HERMES_DASHBOARD_SESSION_TOKEN"]
     assert before == after
+
+
+# --- dashboard auth gate credential -----------------------------------------
+#
+# A non-loopback bind makes Hermes refuse to start without a registered auth
+# provider. crewdock opens the bundled basic provider with a random per-instance
+# password; the router logs in with it, so no one ever types it.
+
+def test_create_writes_a_dashboard_login(root, calls):
+    from crew.core.creds import parse_env_file
+    _agents_dir(root)
+    manager.create(root, "alice", "hermes", {})
+    env = parse_env_file(paths.instance_env_path(root, _iid(root)))
+    assert env[manager.DASHBOARD_USER_KEY]
+    assert len(env[manager.DASHBOARD_PASS_KEY]) >= 32
+
+
+def test_dashboard_passwords_differ_between_instances(root, calls):
+    from crew.core.creds import parse_env_file
+    _agents_dir(root)
+    manager.create(root, "alice", "hermes", {})
+    manager.create(root, "bob", "hermes", {})
+    a = parse_env_file(paths.instance_env_path(root, _iid(root, "alice")))[manager.DASHBOARD_PASS_KEY]
+    b = parse_env_file(paths.instance_env_path(root, _iid(root, "bob")))[manager.DASHBOARD_PASS_KEY]
+    assert a != b
+
+
+def test_update_backfills_a_dashboard_login_once(root, calls):
+    from crew.core.creds import parse_env_file
+    _agents_dir(root)
+    manager.create(root, "alice", "hermes", {})
+    iid = _iid(root)
+    env_path = paths.instance_env_path(root, iid)
+
+    # An instance predating the gate has none; `crew update` adds one, so
+    # repinning it to a current image doesn't close its dashboard.
+    stripped = "\n".join(l for l in env_path.read_text().splitlines()
+                         if not l.startswith(("HERMES_DASHBOARD_BASIC_AUTH_",)))
+    env_path.write_text(stripped + "\n")
+    manager.update(root, "alice")
+    password = parse_env_file(env_path)[manager.DASHBOARD_PASS_KEY]
+    assert password
+
+    # Stable across later updates — a rotating password would log the viewer out
+    # of a dashboard the router had already authenticated.
+    manager.update(root, "alice")
+    assert parse_env_file(env_path)[manager.DASHBOARD_PASS_KEY] == password
+    assert env_path.read_text().count(f"{manager.DASHBOARD_PASS_KEY}=") == 1

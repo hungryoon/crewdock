@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from crew.core import paths
+from crew.core import manager, paths
 from crew.core.creds import parse_env_file
 
 
@@ -33,6 +33,15 @@ def _emails(root: Path, instance_id: str) -> list[str]:
     env = parse_env_file(paths.instance_env_path(root, instance_id))
     return [e.strip() for e in env.get("CREW_ALLOWED_EMAILS", "").split(",")
             if e.strip()]
+
+
+def instance_dashboard_login(root: Path, instance_id: str) -> tuple[str, str]:
+    """(username, password) for the instance dashboard's own auth gate, which
+    the router uses to log in on the viewer's behalf. ('', '') for an instance
+    predating the gate — those run an image that never asks."""
+    env = parse_env_file(paths.instance_env_path(root, instance_id))
+    return (env.get(manager.DASHBOARD_USER_KEY, ""),
+            env.get(manager.DASHBOARD_PASS_KEY, ""))
 
 
 def published_instances(root: Path) -> list[Published]:

@@ -71,6 +71,7 @@ def _write_instance_env(root: Path, name: str, port: int, creds: dict,
     # already-loaded browser SPA (events feed / chat then 403). Pinning it here
     # keeps the token stable across restarts/updates.
     lines.append(f"HERMES_DASHBOARD_SESSION_TOKEN={_new_session_token()}")
+    lines.extend(_dashboard_login_lines())
     # Pre-seed the access whitelist key (commented out, so the instance starts
     # closed — invisible and unreachable on the gateway). Uncomment + fill in to
     # grant gateway access; an empty/absent whitelist means no one can reach it.
@@ -83,6 +84,37 @@ def _write_instance_env(root: Path, name: str, port: int, creds: dict,
 
 def _new_session_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+DASHBOARD_USER_KEY = "HERMES_DASHBOARD_BASIC_AUTH_USERNAME"
+DASHBOARD_PASS_KEY = "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD"
+_DASHBOARD_USER = "crew"
+
+
+def _dashboard_login_lines() -> list[str]:
+    """Credential for the instance dashboard's auth gate.
+
+    A non-loopback bind makes Hermes refuse to start without a registered auth
+    provider; the bundled basic provider is satisfied by a username + password
+    and needs no redirect URI registered anywhere (which is what makes adding an
+    instance a one-command operation). Nobody types this: the gateway router
+    logs in with it and injects the session cookie, behind the Google SSO that
+    is the real authentication.
+    """
+    return [f"{DASHBOARD_USER_KEY}={_DASHBOARD_USER}",
+            f"{DASHBOARD_PASS_KEY}={_new_session_token()}"]
+
+
+def _ensure_dashboard_login(root: Path, name: str) -> None:
+    """Backfill the dashboard credential for instances created before the auth
+    gate landed, so repinning them to a current image doesn't close the
+    dashboard. No-op when one is already present."""
+    from .creds import parse_env_file
+    env_path = paths.instance_env_path(root, name)
+    if DASHBOARD_PASS_KEY in parse_env_file(env_path):
+        return
+    with env_path.open("a") as f:
+        f.write("\n".join(_dashboard_login_lines()) + "\n")
 
 
 def _ensure_session_token(root: Path, name: str) -> None:
@@ -434,6 +466,7 @@ def update(root: Path, name: str, backup: bool = False,
         raise CrewError(
             "choose only one of --image / --rollback / --to-default")
     _ensure_session_token(root, iid)
+    _ensure_dashboard_login(root, iid)
     if backup:
         src = paths.instance_dir(root, iid) / "data"
         dst = paths.instance_dir(root, iid) / f"data.bak-{_stamp()}"

@@ -78,6 +78,54 @@ async def _probe_up(port: int) -> bool:
     return up
 
 
+# Every instance dashboard runs its own auth gate — Hermes refuses a non-loopback
+# bind without one — opened by a random password crewdock wrote into instance.env.
+# The viewer already cleared Google SSO at the front door, so the router logs in
+# for them and injects the session cookie: no second password, and no redirect URI
+# to register per instance (which is why the gate is password-based, not OIDC).
+_login_cache: dict[str, str] = {}
+_login_locks: dict[str, asyncio.Lock] = {}
+
+
+async def _password_login(port: int, user: str, password: str) -> str:
+    """Log into an instance dashboard; return its session as a Cookie header
+    value, or '' if the instance refused or is unreachable."""
+    try:
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as s:
+            async with s.post(
+                f"http://127.0.0.1:{port}/auth/password-login",
+                json={"provider": "basic", "username": user, "password": password},
+            ) as r:
+                if r.status != 200:
+                    return ""
+                return "; ".join(f"{k}={m.value}" for k, m in r.cookies.items())
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
+        return ""
+
+
+async def _dashboard_cookie(iid: str, port: int, *, refresh: bool = False) -> str:
+    """Cached dashboard session for an instance, logging in when missing or
+    stale. '' when the instance has no credential — an image predating the gate
+    asks for nothing, so proxying without a cookie is correct there."""
+    if not refresh and _login_cache.get(iid):
+        return _login_cache[iid]
+    lock = _login_locks.setdefault(iid, asyncio.Lock())
+    async with lock:
+        # Another request may have logged in while this one waited for the lock.
+        if not refresh and _login_cache.get(iid):
+            return _login_cache[iid]
+        user, password = discovery.instance_dashboard_login(_root(), iid)
+        if not password:
+            return ""
+        cookie = await _password_login(port, user, password)
+        if cookie:
+            _login_cache[iid] = cookie
+        else:
+            _login_cache.pop(iid, None)
+        return cookie
+
+
 async def _gather_cards(email: str) -> list[dict]:
     """Build display cards for the instances this email may see."""
     root = _root()
@@ -155,38 +203,48 @@ async def _proxy(request: web.Request) -> web.StreamResponse:
         raise web.HTTPForbidden()
     prefix = f"/i/{name}"
     if _is_websocket(request):
-        return await _proxy_ws(request, match.port, tail, prefix)
-    return await _proxy_http(request, match.port, tail, prefix)
+        return await _proxy_ws(request, match.port, tail, prefix, match.instance_id)
+    return await _proxy_http(request, match.port, tail, prefix, match.instance_id)
 
 
-async def _proxy_http(request, port, tail, prefix) -> web.StreamResponse:
+async def _proxy_http(request, port, tail, prefix, iid) -> web.StreamResponse:
     url = routing.upstream_url(port, tail)
-    headers = routing.proxy_request_headers(dict(request.headers), prefix)
     body = await request.read()
-    try:
-        timeout = aiohttp.ClientTimeout(total=None, connect=5, sock_connect=5)
-        async with aiohttp.ClientSession(auto_decompress=False, timeout=timeout) as session:
-            async with session.request(
-                request.method, url, headers=headers, params=request.query,
-                data=body, allow_redirects=False,
-            ) as up:
-                resp = web.StreamResponse(status=up.status, headers={
-                    k: v for k, v in up.headers.items()
-                    if k.lower() not in routing._HOP_BY_HOP
-                })
-                await resp.prepare(request)
-                async for chunk in up.content.iter_chunked(65536):
-                    await resp.write(chunk)
-                await resp.write_eof()
-                return resp
-    except (aiohttp.ClientError, asyncio.TimeoutError):
-        raise web.HTTPBadGateway(
-            text='<!doctype html><p>upstream unavailable — '
-                 '<a href="/">back to instances</a></p>',
-            content_type="text/html")
+    timeout = aiohttp.ClientTimeout(total=None, connect=5, sock_connect=5)
+    # Two attempts: the injected session can lapse (instance restarted, TTL out).
+    # Nothing is written to the client until the status is known, so one silent
+    # re-login keeps a stale cookie from surfacing as the instance's login page.
+    for attempt in (0, 1):
+        cookie = await _dashboard_cookie(iid, port, refresh=bool(attempt))
+        headers = routing.with_dashboard_cookie(
+            routing.proxy_request_headers(dict(request.headers), prefix), cookie)
+        try:
+            async with aiohttp.ClientSession(auto_decompress=False, timeout=timeout) as session:
+                async with session.request(
+                    request.method, url, headers=headers, params=request.query,
+                    data=body, allow_redirects=False,
+                ) as up:
+                    if attempt == 0 and cookie and routing.session_lapsed(
+                            up.status, up.headers.get("Location", "")):
+                        continue
+                    resp = web.StreamResponse(status=up.status, headers={
+                        k: v for k, v in up.headers.items()
+                        if k.lower() not in routing._HOP_BY_HOP
+                    })
+                    await resp.prepare(request)
+                    async for chunk in up.content.iter_chunked(65536):
+                        await resp.write(chunk)
+                    await resp.write_eof()
+                    return resp
+        except (aiohttp.ClientError, asyncio.TimeoutError):
+            raise web.HTTPBadGateway(
+                text='<!doctype html><p>upstream unavailable — '
+                     '<a href="/">back to instances</a></p>',
+                content_type="text/html")
+    raise web.HTTPBadGateway(text="dashboard login failed")
 
 
-async def _proxy_ws(request, port, tail, prefix) -> web.StreamResponse:
+async def _proxy_ws(request, port, tail, prefix, iid) -> web.StreamResponse:
     ws_url = f"ws://127.0.0.1:{port}{tail}"
     if request.query_string:
         # The dashboard passes its WS auth credential (?token= / ?ticket=) and
@@ -194,7 +252,9 @@ async def _proxy_ws(request, port, tail, prefix) -> web.StreamResponse:
         # instance rejects the upgrade (no_credential -> 403) and the chat /
         # events feed never connect.
         ws_url += f"?{request.query_string}"
-    headers = routing.ws_proxy_request_headers(dict(request.headers), prefix, port)
+    headers = routing.with_dashboard_cookie(
+        routing.ws_proxy_request_headers(dict(request.headers), prefix, port),
+        await _dashboard_cookie(iid, port))
     server_ws = web.WebSocketResponse()
     await server_ws.prepare(request)
     async with aiohttp.ClientSession() as session:
