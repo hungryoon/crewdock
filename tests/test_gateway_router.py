@@ -484,3 +484,125 @@ async def test_emails_forbidden_in_sso_mode(aiohttp_client, monkeypatch, publish
     p = await client.post("/_emails", json={
         "instance": "alice-aaaaaa", "action": "add", "email": "b@x.com"})
     assert p.status == 403
+
+
+# --- instance dashboard auth gate -------------------------------------------
+#
+# Each instance dashboard refuses a non-loopback bind without its own auth
+# provider, so it runs a password gate with a random per-instance credential.
+# The viewer already cleared Google SSO at the front door, so the router logs in
+# for them: nobody sees a second password, and nothing has to be registered with
+# an external IDP per instance.
+
+@pytest.fixture(autouse=True)
+def _clear_login_cache():
+    router._login_cache.clear()
+    router._login_locks.clear()
+    yield
+    router._login_cache.clear()
+    router._login_locks.clear()
+
+
+def _gated_upstream(state):
+    """Upstream that 302s to its own /login unless the request carries the
+    session it last issued — the shape a Hermes dashboard presents."""
+    async def password_login(request):
+        body = await request.json()
+        state["logins"].append((body["provider"], body["username"], body["password"]))
+        state["valid"] = f"sess-{len(state['logins'])}"
+        resp = web.json_response({"ok": True, "next": "/"})
+        resp.set_cookie("hermes_session", state["valid"])
+        return resp
+
+    async def guarded(request):
+        if request.cookies.get("hermes_session") != state["valid"]:
+            raise web.HTTPFound("/login?next=%2F")
+        return web.json_response({"path": request.path,
+                                  "logins": len(state["logins"])})
+
+    up = web.Application()
+    up.router.add_post("/auth/password-login", password_login)
+    up.router.add_route("*", "/{tail:.*}", guarded)
+    return up
+
+
+async def test_proxy_logs_in_so_the_viewer_never_sees_a_password(
+        aiohttp_client, monkeypatch):
+    state = {"logins": [], "valid": None}
+    up_client = await aiohttp_client(_gated_upstream(state))
+    port = up_client.server.port
+    monkeypatch.setattr(router, "_published",
+                        lambda: [Published("alice", "alice-aaaaaa", port, ["a@x.com"])])
+    monkeypatch.setattr(discovery, "instance_dashboard_login",
+                        lambda root, iid: ("crew", "pw-123"))
+
+    client = await aiohttp_client(router.build_app())
+    resp = await client.get("/i/alice/foo", headers={"X-Forwarded-Email": "a@x.com"})
+    assert resp.status == 200
+    assert (await resp.json())["path"] == "/foo"
+    assert state["logins"] == [("basic", "crew", "pw-123")]
+
+
+async def test_proxy_reuses_one_login_across_requests(aiohttp_client, monkeypatch):
+    state = {"logins": [], "valid": None}
+    up_client = await aiohttp_client(_gated_upstream(state))
+    port = up_client.server.port
+    monkeypatch.setattr(router, "_published",
+                        lambda: [Published("alice", "alice-aaaaaa", port, ["a@x.com"])])
+    monkeypatch.setattr(discovery, "instance_dashboard_login",
+                        lambda root, iid: ("crew", "pw-123"))
+
+    client = await aiohttp_client(router.build_app())
+    for _ in range(3):
+        resp = await client.get("/i/alice/", headers={"X-Forwarded-Email": "a@x.com"})
+        assert resp.status == 200
+    # One login, not one per request — the cookie is cached per instance.
+    assert len(state["logins"]) == 1
+
+
+async def test_proxy_logs_in_again_when_the_session_lapses(aiohttp_client, monkeypatch):
+    state = {"logins": [], "valid": None}
+    up_client = await aiohttp_client(_gated_upstream(state))
+    port = up_client.server.port
+    monkeypatch.setattr(router, "_published",
+                        lambda: [Published("alice", "alice-aaaaaa", port, ["a@x.com"])])
+    monkeypatch.setattr(discovery, "instance_dashboard_login",
+                        lambda root, iid: ("crew", "pw-123"))
+
+    client = await aiohttp_client(router.build_app())
+    assert (await client.get("/i/alice/",
+                             headers={"X-Forwarded-Email": "a@x.com"})).status == 200
+
+    # The instance restarted: the cached cookie is no longer the one it accepts.
+    # The viewer must still get the page, not the instance's login screen.
+    state["valid"] = "sess-after-restart"
+    resp = await client.get("/i/alice/", headers={"X-Forwarded-Email": "a@x.com"})
+    assert resp.status == 200
+    assert len(state["logins"]) == 2
+
+
+async def test_proxy_does_not_log_into_an_instance_without_a_credential(
+        aiohttp_client, monkeypatch):
+    """An instance on a pre-gate image asks for nothing; the router must not
+    POST a login at it, and must proxy exactly as before."""
+    posts = []
+
+    async def upstream(request):
+        if request.path == "/auth/password-login":
+            posts.append(request.path)
+        return web.json_response({"path": request.path})
+
+    up = web.Application()
+    up.router.add_route("*", "/{tail:.*}", upstream)
+    up_client = await aiohttp_client(up)
+    port = up_client.server.port
+    monkeypatch.setattr(router, "_published",
+                        lambda: [Published("alice", "alice-aaaaaa", port, ["a@x.com"])])
+    monkeypatch.setattr(discovery, "instance_dashboard_login",
+                        lambda root, iid: ("", ""))
+
+    client = await aiohttp_client(router.build_app())
+    resp = await client.get("/i/alice/bar", headers={"X-Forwarded-Email": "a@x.com"})
+    assert resp.status == 200
+    assert (await resp.json())["path"] == "/bar"
+    assert posts == []

@@ -303,3 +303,39 @@ def test_instance_model_not_connected_or_missing(tmp_path):
     (tmp_path / "data" / "instances" / "carol" / "data").mkdir(parents=True)
     assert discovery.instance_model(tmp_path, "carol") == {
         "provider": "", "connected": False}
+
+
+# --- injected dashboard session ---------------------------------------------
+
+def test_with_dashboard_cookie_keeps_what_the_browser_sent():
+    out = routing.with_dashboard_cookie({"Cookie": "theme=dark"}, "hermes_session=s1")
+    assert out["Cookie"] == "theme=dark; hermes_session=s1"
+
+
+def test_with_dashboard_cookie_sets_the_only_cookie():
+    assert routing.with_dashboard_cookie({}, "hermes_session=s1")["Cookie"] \
+        == "hermes_session=s1"
+
+
+def test_with_dashboard_cookie_is_a_no_op_without_one():
+    # Instances on a pre-gate image get exactly the headers they got before.
+    assert routing.with_dashboard_cookie({"Cookie": "theme=dark"}, "") \
+        == {"Cookie": "theme=dark"}
+
+
+def test_with_dashboard_cookie_does_not_duplicate_a_differently_cased_header():
+    out = routing.with_dashboard_cookie({"cookie": "theme=dark"}, "hermes_session=s1")
+    assert [k for k in out if k.lower() == "cookie"] == ["Cookie"]
+    assert out["Cookie"] == "theme=dark; hermes_session=s1"
+
+
+def test_session_lapsed_on_401_and_login_redirect():
+    assert routing.session_lapsed(401, "")
+    assert routing.session_lapsed(302, "/login?next=%2F")
+
+
+def test_session_lapsed_ignores_the_instance_own_redirects():
+    # A dashboard redirect that isn't the login page must be passed through, or
+    # the router would re-login on every ordinary navigation.
+    assert not routing.session_lapsed(302, "/sessions")
+    assert not routing.session_lapsed(200, "")

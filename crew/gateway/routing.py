@@ -66,6 +66,27 @@ def proxy_request_headers(incoming: dict, prefix: str) -> dict:
     return out
 
 
+def with_dashboard_cookie(headers: dict, cookie: str) -> dict:
+    """Add the router's own instance-dashboard session to the forwarded Cookie
+    header, keeping whatever the browser sent. Empty cookie = unchanged."""
+    if not cookie:
+        return headers
+    existing = next((v for k, v in headers.items() if k.lower() == "cookie"), "")
+    headers = {k: v for k, v in headers.items() if k.lower() != "cookie"}
+    headers["Cookie"] = f"{existing}; {cookie}" if existing else cookie
+    return headers
+
+
+def session_lapsed(status: int, location: str) -> bool:
+    """Did the instance reject the session the router injected? Its dashboard
+    answers an unauthenticated request with 401, or a redirect to its own login
+    page — both mean the cached cookie is stale (instance restarted, TTL out)
+    and the router should log in again."""
+    if status == 401:
+        return True
+    return status in (302, 303, 307, 308) and "/login" in location
+
+
 def gateway_secret_from_headers(incoming: dict) -> str | None:
     """Password from an ``Authorization: Basic base64(user:pass)`` header
     (oauth2-proxy sets this via --basic-auth-password). None if absent/malformed."""

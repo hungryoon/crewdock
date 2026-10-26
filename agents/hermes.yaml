@@ -16,10 +16,30 @@ dashboard:
 # Bridge networking (default when network_mode is absent) puts each instance in
 # its own network namespace, so it cannot reach the host router at 127.0.0.1:9400
 # to spoof identity. The dashboard binds 0.0.0.0 INSIDE the container so docker's
-# port-map reaches it; Hermes' own auth gate is disabled (INSECURE=1) because the
-# host publishes ONLY on 127.0.0.1 (template: 127.0.0.1:${CREW_PORT}:9119), each
-# instance gets its own per-compose-project bridge network, and crewdock's
-# gateway SSO is the real auth in front.
+# port-map reaches it; the host publishes on loopback only (template:
+# 127.0.0.1:${CREW_PORT}:9119).
+#
+# That non-loopback bind engages Hermes' auth gate, which REQUIRES a registered
+# DashboardAuthProvider or start_server exits. The gate is satisfied by the
+# bundled basic provider (plugins/dashboard_auth/basic), which needs nothing but
+# a username + password -- crewdock writes a random one per instance at create
+# time. The OIDC provider would work too, but its redirect_uri is derived from
+# each instance's own public URL, so every new instance would need its callback
+# registered by hand on the Google client. The basic gate has no redirect URI at
+# all, so adding an instance stays a one-command operation.
+#
+# Nobody is ever asked for that password: the gateway router logs in with it on
+# the viewer's behalf and injects the session cookie (crew/gateway/router.py).
+# Google SSO out front is still the real authentication -- this gate only stops
+# the dashboard refusing to start, and closes it to anything that reaches the
+# published port without going through the gateway.
+#
+# HERMES_DASHBOARD_INSECURE stays set ON PURPOSE. Up to v2026.6.x it was the only
+# thing opening the gate (docker/s6-rc.d/dashboard/run turned it into --insecure);
+# the June 2026 hardening made it accepted-and-ignored (the container just warns).
+# Instances still pinned to a pre-hardening image depend on it, and dropping it
+# would close their dashboard with no provider configured. It is a no-op on
+# current images, so it costs nothing to keep until every instance is repinned.
 env:
   HERMES_DASHBOARD: "1"
   HERMES_DASHBOARD_HOST: "0.0.0.0"
@@ -28,6 +48,8 @@ passthrough_env:
   - HERMES_UID
   - HERMES_GID
   - HERMES_DASHBOARD_SESSION_TOKEN
+  - HERMES_DASHBOARD_BASIC_AUTH_USERNAME
+  - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD
 # crewdock fills these with the host uid/gid at create time so the container
 # (which starts as root) drops privileges to the host user — keeps the
 # bind-mounted data/ host-owned so `crew rm --purge` never hits root residue.
